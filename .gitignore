@@ -1,0 +1,6 @@
+dist
+temp
+node_modules
+.idea
+dev.sqlite
+package-lock.json
