@@ -11,6 +11,9 @@ export class Log extends BaseEntity {
 	name: string;
 
 	@Property()
+	context?: object;
+
+	@Property()
 	time: Date;
 
 	@Index({ type: 'fulltext' })
@@ -36,6 +39,7 @@ export class Log extends BaseEntity {
 	constructor(
 		name: string,
 		data: object,
+		context: [] | object,
 		time: Date,
 		level: string,
 		traceId: string,
@@ -47,6 +51,7 @@ export class Log extends BaseEntity {
 		super();
 		this.name = name;
 		this.data = data;
+		this.context = context;
 		this.time = time;
 		this.level = level;
 		this.traceId = traceId;
