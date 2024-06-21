@@ -41,6 +41,6 @@ export const init = (async () => {
 	app.use((req, res) => res.status(404).json({ message: "No route found" }));
 
 	DI.server = app.listen(PORT, () => {
-		console.log(`Service endpoint = http://localhost:${PORT}`);
+		console.log(`Service started on port ${PORT}`);
 	});
 })();
