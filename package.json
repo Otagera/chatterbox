@@ -1,19 +1,44 @@
 {
-	"name": "htmx-tutorial",
-	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
+	"name": "logging",
+	"version": "2.0.0",
+	"description": "A simple typescript server to parse log",
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1",
-		"start": "node index.js"
+		"start": "tsc && node dist/index",
+		"start:dev": "tsc-watch --onSuccess \"node dist/index\"",
+		"start:prod": "tsc && node dist/index"
 	},
 	"keywords": [],
-	"author": "",
+	"author": "Othniel Agera",
 	"license": "ISC",
 	"dependencies": {
+		"@mikro-orm/core": "^6.2.9",
+		"@mikro-orm/mongo-highlighter": "^1.0.0",
+		"@mikro-orm/mongodb": "^6.2.9",
 		"express": "^4.19.2",
+		"express-promise-router": "^4.1.1",
 		"pug": "^3.0.3",
 		"sequelize": "^6.37.3",
-		"sqlite3": "^5.1.7"
+		"sqlite3": "^5.1.7",
+		"tsc-watch": "^6.2.0",
+		"typescript": "^5.5.2"
+	},
+	"devDependencies": {
+		"@mikro-orm/cli": "^6.2.9",
+		"@types/express": "^4.17.21",
+		"@types/express-promise-router": "^3.0.0",
+		"@types/jest": "^29.5.12",
+		"@types/node": "^20.14.7",
+		"@types/supertest": "^6.0.2",
+		"jest": "^29.7.0",
+		"supertest": "^7.0.0",
+		"ts-jest": "^29.1.5",
+		"ts-node": "^10.9.2"
+	},
+	"mikro-orm": {
+		"useTsNode": true,
+		"configPaths": [
+			"./app/mikro-orm.config.ts",
+			"./dist/app/mikro-orm.config.js"
+		]
 	}
 }

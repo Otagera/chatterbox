@@ -1,32 +1,43 @@
 doctype html
 html(lang='en')
   head
-    title Book Recommandations
+    title Log Recommandations
     link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/css/bootstrap.min.css')
     script(src='https://unpkg.com/htmx.org@1.5.0')
     style.
       body {padding: 20px}
-      table {font-family: arial, sans-serif;border-collapse: collapse;width: 100%;}
+      table {font-family: arial, sans-serif;border-collapse: collapse;width: 100%; font-size:12px;}
       tr.htmx-swapping td {opacity: 0;transition: opacity 0.5s ease-out;}
       td, th {border: 1px solid #383737;text-align: left;padding: 8px;}
       tr:nth-child(even) {background-color: #dddddd;}
   body
-    h1 Book Recommendations
-    form(hx-post="/submit" hx-swap="beforeend" hx-target="#new-book" class="mb-3")
-      input(type="text" placeholder="Book Title" name="title" class="form-control mb-3")
-      input(type="text" placeholder="Book Author" name="author" class="form-control mb-3")
+    h1 Log Recommendations
+    form(hx-post="/submit" hx-swap="beforeend" hx-target="#new-log" class="mb-3")
+      input(type="text" placeholder="Type" name="type" class="form-control mb-3")
+      input(type="text" placeholder="Key" name="key" class="form-control mb-3")
       button(type="submit" class="btn btn-primary") Submit
-    table
+    table(class="table table-striped table-hover")
+      colgroup
+        col(span="1" style="width:10%")
+        col(span="1" style="width:28%")
+        col(span="1" style="width:52%")
+        col(span="1" style="width:10%")
       thead
         tr
-          th Book Title
-          th Book Author
-      tbody(id="new-book" hx-target="closest tr" hx-swap="outerHTML swap:0.5s")
-        each book in books
+          th(scope="col") ID
+          th(scope="col") Key
+          th(scope="col") Data
+          th(scope="col") level
+      tbody(id="new-log" hx-target="closest tr table-group-divider" hx-swap="outerHTML swap:0.5s")
+        each log in logs
           tr
-            td #{book.name}
-            td #{book.author}
-            td
-              button(class="btn btn-primary" hx-get=`/get-edit-form/${book.id}`) Edit Book
-            td
-              button(hx-delete=`/delete/${book.id}` class="btn btn-primary") Delete
+            td(scope="row") #{log.id}
+            td #{log.key}
+            
+            td(hx-get=`/get-log-data/${log.id}` hx-target="this" role="button")
+              small(class="text-muted") #{log.time}
+            td(class=`${log.levelStyle}`) #{log.level}
+            //- td
+            //-   button(class="btn btn-primary" hx-get=`/get-edit-form/${log.id}`) Edit Log
+            //- td
+            //-   button(hx-delete=`/delete/${log.id}` class="btn btn-primary") Delete
