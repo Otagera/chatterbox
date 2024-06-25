@@ -3,6 +3,7 @@ import http from "http";
 import express from "express";
 import bodyParser from "body-parser";
 import path from "path";
+import dotenv from "dotenv";
 import {
 	EntityManager,
 	EntityRepository,
@@ -20,6 +21,7 @@ export const DI = {} as {
 	logs: EntityRepository<Log>;
 };
 
+dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3005;
 
