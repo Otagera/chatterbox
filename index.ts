@@ -2,6 +2,7 @@ import "reflect-metadata";
 import http from "http";
 import express from "express";
 import bodyParser from "body-parser";
+import path from "path";
 import {
 	EntityManager,
 	EntityRepository,
@@ -30,6 +31,7 @@ export const init = (async () => {
 	app.use(bodyParser.urlencoded({ extended: false }));
 	app.use(bodyParser.json());
 
+  app.set( "views", path.join( __dirname, "../views" ) );
 	app.set("view engine", "pug");
 
 	DI.orm = await MikroORM.init();
