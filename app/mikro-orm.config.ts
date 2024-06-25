@@ -4,13 +4,6 @@ import { MongoHighlighter } from "@mikro-orm/mongo-highlighter";
 import { Log, BaseEntity } from "./entities";
 
 dotenv.config();
-console.log("================================");
-console.log("================================");
-console.log("================================");
-console.log("process.env", process.env);
-console.log("================================");
-console.log("================================");
-console.log("================================");
 export default defineConfig({
 	entities: [Log, BaseEntity],
 	dbName: process.env.DB_COLLECTION || "entryboost-server-node-dev",
