@@ -1,11 +1,9 @@
 import { Request, Response } from "express";
 import Router from "express-promise-router";
 
-import { DI } from "../../index";
+import { DI, paginationState } from "../../index";
 
 const router = Router();
-let currentCursor: string | null;
-let hasNextPage: boolean;
 
 const getLevelStyle = (level: string) => {
 	switch (level) {
@@ -20,43 +18,22 @@ const getLevelStyle = (level: string) => {
 	}
 };
 
-router.get("/", async (req: Request, res: Response) => {
-	try {
-		const logs = await DI.logs.findByCursor(
-			{},
-			{
-				first: 100,
-				orderBy: { time: "desc" },
-			}
-		);
-		currentCursor = logs.endCursor;
-		hasNextPage = logs.hasNextPage;
-
-		return res.render("index", {
-			logs: logs.items.map((log) => {
-				let levelStyle = getLevelStyle(log.level);
-				return { ...log, id: log._id, levelStyle };
-			}),
-		});
-	} catch (error: any) {
-		return res.send(`<p>${error ? error : "Something went wrong!!!"}`);
-	}
-});
-
 router.get("/get-more-logs", async (req: Request, res: Response) => {
-	if (!hasNextPage) return res.send();
+	if (!paginationState.getHasNextPage()) return res.send();
 
 	try {
 		const logs = await DI.logs.findByCursor(
 			{},
 			{
 				first: 100,
-				after: currentCursor as string,
+				after: paginationState.getCurrentCursor() as string,
 				orderBy: { time: "desc" },
 			}
 		);
-		currentCursor = logs.endCursor;
-		hasNextPage = logs.hasNextPage;
+
+		paginationState.setCurrentCursor(logs.endCursor);
+		paginationState.setHasNextPage(logs.hasNextPage);
+
 		let logsHTML = ``;
 
 		logs.items.forEach((log) => {
@@ -76,7 +53,7 @@ router.get("/get-more-logs", async (req: Request, res: Response) => {
 			logsHTML = logsHTML.concat(logHTML);
 		});
 
-		if (!hasNextPage) {
+		if (!paginationState.getHasNextPage()) {
 			logsHTML = logsHTML.concat(
 				`<tr><td colspan="4" class="fs-1">END!!!</td></tr>`
 			);
@@ -164,12 +141,12 @@ router.post("/search", async (req: Request, res: Response) => {
 	try {
 		const logs = await DI.logs.findByCursor(filter, {
 			first: 100,
-			after: currentCursor as string,
+			after: paginationState.getCurrentCursor() as string,
 			orderBy: { time: "desc" },
 		});
 
-		currentCursor = logs.endCursor;
-		hasNextPage = logs.hasNextPage;
+		paginationState.setCurrentCursor(logs.endCursor);
+		paginationState.setHasNextPage(logs.hasNextPage);
 
 		let logsHTML = ``;
 		logs.items.forEach((log) => {
@@ -192,7 +169,7 @@ router.post("/search", async (req: Request, res: Response) => {
 			logsHTML = logsHTML.concat(
 				`<tr><td colspan="4" class="fs-1 text-center">Empty</td></tr>`
 			);
-		} else if (!hasNextPage)
+		} else if (!paginationState.getHasNextPage())
 			logsHTML = logsHTML.concat(
 				`<tr><td colspan="4" class="fs-1 text-center">END!!!</td></tr>`
 			);
@@ -203,4 +180,4 @@ router.post("/search", async (req: Request, res: Response) => {
 	}
 });
 
-export const LogController = router;
+export const LogAPIController = router;

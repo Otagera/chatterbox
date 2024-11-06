@@ -1,1 +1,2 @@
-export * from "./log.controller"
+export * from "./log.view.controller";
+export * from "./log.api.controller";

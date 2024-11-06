@@ -4,3 +4,6 @@ node_modules
 .idea
 dev.sqlite
 package-lock.json
+.env
+/.vscode
+.DS_Store
