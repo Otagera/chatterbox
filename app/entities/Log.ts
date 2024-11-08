@@ -6,17 +6,17 @@ export class Log extends BaseEntity {
 	@Property()
 	level: string;
 
-	@Index({ type: 'fulltext' })
+	@Index({ type: "fulltext" })
 	@Property()
 	name: string;
 
-	@Property()
+	@Property({ nullable: true })
 	context?: object;
 
 	@Property()
 	time: Date;
 
-	@Index({ type: 'fulltext' })
+	@Index({ type: "fulltext" })
 	@Property({ nullable: true })
 	data?: object;
 
@@ -32,7 +32,7 @@ export class Log extends BaseEntity {
 	@Property({ nullable: true })
 	timeTaken?: string;
 
-	@Index({ type: 'fulltext' })
+	@Index({ type: "fulltext" })
 	@Property()
 	key: string;
 

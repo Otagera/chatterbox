@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import Router from "express-promise-router";
 
-import { DI, paginationState } from "../../index";
+import { paginationState } from "../../index";
+import { services } from "../db";
+import { ILog } from "../interfaces";
 
 const router = Router();
 
@@ -18,11 +20,12 @@ const getLevelStyle = (level: string) => {
 	}
 };
 
+//htmx
 router.get("/get-more-logs", async (req: Request, res: Response) => {
 	if (!paginationState.getHasNextPage()) return res.send();
 
 	try {
-		const logs = await DI.logs.findByCursor(
+		const logs = await services.logs.findByCursor(
 			{},
 			{
 				first: 100,
@@ -67,7 +70,7 @@ router.get("/get-more-logs", async (req: Request, res: Response) => {
 router.get("/get-log-data/:id", async (req: Request, res: Response) => {
 	const id = req.params.id;
 	try {
-		const log = await DI.logs.findOneOrFail(id);
+		const log = await services.logs.findOneOrFail(id);
 		if (!log) {
 			throw new Error("Something went wrong!!!");
 		}
@@ -139,7 +142,7 @@ router.post("/search", async (req: Request, res: Response) => {
 		delete filter.time;
 	}
 	try {
-		const logs = await DI.logs.findByCursor(filter, {
+		const logs = await services.logs.findByCursor(filter, {
 			first: 100,
 			after: paginationState.getCurrentCursor() as string,
 			orderBy: { time: "desc" },
@@ -178,6 +181,14 @@ router.post("/search", async (req: Request, res: Response) => {
 	} catch (error: any) {
 		return res.send(`<p>${error ? error : "Something went wrong!!!"}`);
 	}
+});
+
+router.post("/logs", async (req: Request, res: Response) => {
+	const log: ILog = req.body;
+	const createdLog = services.logs.create(log);
+	await services.em.flush();
+	console.log("createdLog", createdLog);
+	res.status(200).json({ success: true });
 });
 
 export const LogAPIController = router;

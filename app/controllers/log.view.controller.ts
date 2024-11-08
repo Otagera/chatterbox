@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import Router from "express-promise-router";
 
-import { DI, paginationState } from "../../index";
+import { paginationState } from "../../index";
+import { services } from "../db";
 
 const router = Router();
 
@@ -20,7 +21,7 @@ const getLevelStyle = (level: string) => {
 
 router.get("/", async (req: Request, res: Response) => {
 	try {
-		const logs = await DI.logs.findByCursor(
+		const logs = await services.logs.findByCursor(
 			{},
 			{
 				first: 100,
