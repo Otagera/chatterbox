@@ -1,11 +1,11 @@
 import dotenv from "dotenv";
 import { defineConfig } from "@mikro-orm/mongodb";
 import { MongoHighlighter } from "@mikro-orm/mongo-highlighter";
-import { Log, BaseEntity } from "./entities";
+import { Log, AppKey, BaseEntity } from "./entities";
 
 dotenv.config();
 export default defineConfig({
-	entities: [Log, BaseEntity],
+	entities: ["./dist/app/entities"],
 	dbName: process.env.DB_NAME || "chatterbox",
 	highlighter: new MongoHighlighter(),
 	debug: true,

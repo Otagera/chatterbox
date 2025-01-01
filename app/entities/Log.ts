@@ -1,7 +1,7 @@
 import { Entity, Index, Property } from "@mikro-orm/mongodb";
 import { BaseEntity } from "./BaseEntity";
 
-@Entity({ tableName: "chatterbox" })
+@Entity({ tableName: "log" })
 export class Log extends BaseEntity {
 	@Property()
 	level: string;
