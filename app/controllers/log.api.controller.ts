@@ -2,12 +2,12 @@ import { Request, Response } from "express";
 import Router from "express-promise-router";
 import { z } from "zod";
 import md5 from "md5";
-import NodeRSA from "encrypt-rsa";
 import crypto from "crypto";
 
 import { paginationState } from "../../index";
 import { services } from "../db";
-import { ILog } from "../interfaces";
+import { IAppKey, ILog } from "../interfaces";
+import { AppKeyStatus } from "../entities";
 
 const router = Router();
 
@@ -225,7 +225,6 @@ router.post("/logs/bulk", async (req: Request, res: Response) => {
 	res.status(200).json({ success: true });
 });
 
-const nodeRSA = new NodeRSA();
 const createChecksum = (appName: string) => {
 	return crypto
 		.createHash("sha256")
@@ -240,16 +239,11 @@ const hashKeys = (key: string) => {
 		.digest("hex");
 };
 
-const shortenedKey = (key: string, checkSum: string) => {
-	return Buffer.from(`${hashKeys(key)}_${checkSum}`, "utf-8").toString(
-		"base64"
-	);
-};
+const createSecretKey = (appName: string) => {
+	const checkSum = createChecksum(appName);
+	const apiKey = crypto.randomBytes(24).toString("base64url");
 
-const reverseShortenedKey = (shortenedKey: string) => {
-	const decoded = Buffer.from(shortenedKey, "base64").toString("utf-8");
-	// const [originalKey, checksum] = decoded.split("_");
-	return decoded;
+	return `chbxsk_${apiKey}${checkSum}_ZEE`;
 };
 
 router.post("/apps/authorize", async (req: Request, res: Response) => {
@@ -263,46 +257,39 @@ router.post("/apps/authorize", async (req: Request, res: Response) => {
 		type specType = z.infer<typeof spec>;
 		const { appName, expires } = validateSpec<specType>(spec, req.body);
 
-		const appKey = await services.appKeys.findOne({ appName: appName });
-		if (!appKey) {
-			return res
-				.status(404)
-				.json({ success: false, message: `Application: ${appName} not found` });
+		const expiresinMiliSecs = Date.now() + expires * 1000;
+		const apiSecret = createSecretKey(appName);
+		const hashedApiSecret = hashKeys(apiSecret);
+		const existingAppKey = await services.appKeys.findOne({ appName: appName });
+
+		if (existingAppKey) {
+			const appKeyIsActive =
+				existingAppKey.status === "active" &&
+				existingAppKey.expires > Date.now();
+			if (appKeyIsActive) {
+				return res.status(409).json({
+					success: false,
+					message: `Application: ${appName} has already been authorized`,
+				});
+			}
+
+			existingAppKey.apiSecret = hashedApiSecret;
+			existingAppKey.expires = Date.now() + expires * 1000;
+		} else {
+			let appKey = {
+				appName,
+				apiSecret: hashedApiSecret,
+				expires: expiresinMiliSecs,
+				status: AppKeyStatus.DISABLED,
+			};
+
+			services.appKeys.create(appKey as IAppKey);
 		}
-
-		const appKeyIsActive =
-			appKey.status === "active" && appKey.expires > Date.now();
-		if (appKeyIsActive) {
-			return res.status(409).json({
-				success: false,
-				message: `Application: ${appName} has already been authorized`,
-			});
-		}
-
-		const { publicKey, privateKey } = nodeRSA.createPrivateAndPublicKeys();
-		const checkSum = createChecksum(appName);
-		console.log("checkSum", checkSum);
-		const shortApiKey = shortenedKey(publicKey, checkSum);
-		const shortApiSecret = shortenedKey(privateKey, checkSum);
-		const apiKey = `chbxpk_${shortApiKey}_ZEE`;
-		const apiSecret = `chbxsk_${shortApiSecret}_ZEE`;
-		console.log("publicKey", publicKey);
-		console.log("shortApiKey", shortApiKey);
-		console.log("reverseShortenedKey", reverseShortenedKey(shortApiKey));
-		console.log("shortApiSecret", shortApiSecret);
-		console.log("apiKey", apiKey);
-		console.log("apiSecret", apiSecret);
-
-		appKey.apiKey = apiKey;
-		appKey.apiSecret = hashKeys(apiSecret);
-		appKey.expires = Date.now() + expires * 1000;
-
 		await services.em.flush();
 
 		return res.status(201).json({
 			success: true,
 			message: `Application: ${appName} has been successfully authorized`,
-			apiKey,
 			apiSecret,
 		});
 	} catch (error) {
@@ -317,26 +304,22 @@ router.post("/apps/verify", async (req: Request, res: Response) => {
 	try {
 		const spec = z
 			.object({
-				apiKey: z.string(),
+				appName: z.string(),
 				apiSecret: z.string(),
 			})
 			.required();
 		type specType = z.infer<typeof spec>;
-		const { apiKey, apiSecret } = validateSpec<specType>(spec, req.body);
+		const { appName, apiSecret } = validateSpec<specType>(spec, req.body);
 
 		// Extract the appName and the public/private key data from the apiKey and apiSecret
-		const [typeApiKey, publicKeyHashWithChecksum] = apiKey.split("_");
 		const [typeApiSecret, _privateKeyHashWithChecksum] = apiSecret.split("_");
 
-		if (typeApiKey !== "chbxpk" || typeApiSecret !== "chbxsk") {
+		if (typeApiSecret !== "chbxsk") {
 			return res.status(400).json({
 				success: false,
 				message: "Invalid API key format",
 			});
 		}
-
-		// Here, we assume that the appName is stored alongside the API key or can be retrieved via another mechanism.
-		const appName = "entryboost"; // You would retrieve this from the request context or database
 
 		const appKey = await services.appKeys.findOne({ appName: appName });
 		if (!appKey) {
@@ -346,35 +329,54 @@ router.post("/apps/verify", async (req: Request, res: Response) => {
 			});
 		}
 
-		const checksum = createChecksum(appName);
-		const recomputedPublicKey = reverseShortenedKey(appKey.apiKey);
 		const recomputedPrivateKey = appKey.apiSecret;
 
 		// Check if the recomputed hashes match the original API key and secret
-		const isApiKeyValid = publicKeyHashWithChecksum === recomputedPublicKey;
 		const isApiSecretValid = hashKeys(apiSecret) === recomputedPrivateKey;
-		console.log("isApiKeyValid", isApiKeyValid);
-		console.log("isApiSecretValid", isApiSecretValid);
-		console.log("publicKeyHashWithChecksum", publicKeyHashWithChecksum);
-		console.log("recomputedPublicKey", recomputedPublicKey);
-		if (isApiKeyValid && isApiSecretValid) {
+
+		if (isApiSecretValid) {
 			return res.status(200).json({
 				success: true,
-				message: "API key and secret are valid",
+				message: "API secret is valid",
 			});
 		}
 		return res.status(401).json({
 			success: false,
-			message: "Invalid API key or secret",
+			message: "Invalid API secret",
 		});
 	} catch (error) {
 		return res.status(500).json({
 			success: false,
-			message: "Invalid API key or secret",
+			message: "Invalid API secret",
 		});
 	}
 });
 
-router.post("/apps/revoke", async () => {});
+router.post("/apps/revoke", async (req: Request, res: Response) => {
+	try {
+		const spec = z
+			.object({
+				appName: z.string(),
+			})
+			.required();
+		type specType = z.infer<typeof spec>;
+		const { appName } = validateSpec<specType>(spec, req.body);
+
+		const appKey = await services.appKeys.findOne({ appName: appName });
+		appKey?.status = AppKeyStatus.DISABLED;
+		await services.em.flush();
+		if (!appKey) {
+			return res.status(404).json({
+				success: false,
+				message: `Application: ${appName} not found`,
+			});
+		}
+	} catch (error) {
+		return res.status(500).json({
+			success: false,
+			message: "API secret revocation not succesfully",
+		});
+	}
+});
 
 export const LogAPIController = router;

@@ -13,13 +13,10 @@ export class AppKey extends BaseEntity {
 	appName: string;
 
 	@Property()
-	apiKey: string;
-
-	@Property()
 	apiSecret: string;
 
 	@Property()
-	config: string;
+	config?: string;
 
 	@Property()
 	expires: number;
@@ -29,7 +26,6 @@ export class AppKey extends BaseEntity {
 
 	constructor(
 		appName: string,
-		apiKey: string,
 		apiSecret: string,
 		config: string,
 		expires: number,
@@ -37,7 +33,6 @@ export class AppKey extends BaseEntity {
 	) {
 		super();
 		this.appName = appName;
-		this.apiKey = apiKey;
 		this.apiSecret = apiSecret;
 		this.config = config;
 		this.expires = expires;
