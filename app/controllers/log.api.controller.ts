@@ -363,14 +363,19 @@ router.post("/apps/revoke", async (req: Request, res: Response) => {
 		const { appName } = validateSpec<specType>(spec, req.body);
 
 		const appKey = await services.appKeys.findOne({ appName: appName });
-		appKey?.status = AppKeyStatus.DISABLED;
-		await services.em.flush();
 		if (!appKey) {
 			return res.status(404).json({
 				success: false,
 				message: `Application: ${appName} not found`,
 			});
 		}
+		appKey.status = AppKeyStatus.DISABLED;
+		await services.em.flush();
+
+		return res.status(404).json({
+			success: false,
+			message: `Application: ${appName} not found`,
+		});
 	} catch (error) {
 		return res.status(500).json({
 			success: false,
