@@ -10,7 +10,7 @@ import { IAppKey, ILog } from "../interfaces";
 import { AppKeyStatus } from "../entities";
 
 const router = Router();
-
+console.log("here");
 const getLevelStyle = (level: string) => {
 	switch (level) {
 		case "info":
@@ -238,6 +238,61 @@ const hashKeys = (key: string) => {
 		.update(key + "LP90", "utf-8")
 		.digest("hex");
 };
+
+const getKeyAndIV = (id: string) => {
+	const key = crypto.createHash("sha256").update(id).digest(); // 32 bytes for AES-256
+	const iv = crypto.createHash("md5").update(id).digest();
+	return { key, iv };
+};
+
+const encryptObj = (obj: object) => encrypt(JSON.stringify(obj));
+const decryptObj = (ciphertext: string) => JSON.parse(decrypt(ciphertext));
+
+/**
+ * Encrypts a given text using AES-256-CBC.
+ * @param {string} plaintext - The text to encrypt.
+ * @returns {string} - The encrypted text in base64 format.
+ */
+const encrypt = (plaintext: string): string => {
+	const { key, iv } = getKeyAndIV("672f733601e71da46a3f1224");
+	const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+	let encrypted = cipher.update(plaintext, "utf8", "base64");
+	encrypted += cipher.final("base64");
+	return encrypted;
+};
+
+/**
+ * Decrypts a given encrypted text using AES-256-CBC.
+ * @param {string} ciphertext - The encrypted text in base64 format.
+ * @returns {string} - The decrypted text.
+ */
+const decrypt = (ciphertext: string): string => {
+	const { key, iv } = getKeyAndIV("672f733601e71da46a3f1224");
+	const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+	let decrypted = decipher.update(ciphertext, "base64", "utf8");
+	decrypted += decipher.final("utf8");
+	return decrypted;
+};
+
+// Example usage
+const text = "Server started on port 3682";
+const encryptedText = encrypt(text);
+const decryptedText = decrypt(encryptedText);
+
+const obj = {
+	msg: "Server started on port 3682",
+	duration: "0.663s",
+};
+const encryptedObj = encryptObj(obj);
+const decryptedObj = decryptObj(encryptedObj);
+
+console.log("Original Text:", text);
+console.log("Encrypted Text:", encryptedText);
+console.log("Decrypted Text:", decryptedText);
+
+console.log("Original Obj:", obj);
+console.log("Encrypted Obj:", encryptedObj);
+console.log("Decrypted Obj:", decryptedObj);
 
 const createSecretKey = (appName: string) => {
 	const checkSum = createChecksum(appName);
