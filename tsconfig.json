@@ -10,6 +10,6 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["./app", "app/entities/.ts"],
+  "include": ["./app", "app/entities/.ts", "index.d.ts"],
   "exclude": ["node_modules"]
 }

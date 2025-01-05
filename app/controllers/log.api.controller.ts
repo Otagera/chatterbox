@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response, NextFunction } from "express";
 import Router from "express-promise-router";
 import { z } from "zod";
 import md5 from "md5";
@@ -8,7 +8,14 @@ import { paginationState } from "../../index";
 import { services } from "../db";
 import { IAppKey, ILog } from "../interfaces";
 import { AppKeyStatus } from "../entities";
+import {
+	InvalidKeyError,
+	HTTPError,
+	AppNotFoundError,
+} from "../utils/error.util";
+import constantsUtil from "../utils/constants.util";
 
+const { HTTP_STATUS_CODES } = constantsUtil;
 const router = Router();
 console.log("here");
 const getLevelStyle = (level: string) => {
@@ -23,12 +30,8 @@ const getLevelStyle = (level: string) => {
 			return "text-info-emphasis";
 	}
 };
-
-const validateSpec = <T>(
-	spec: any,
-	data: { [key: string]: unknown },
-	optionalConfig = {}
-): T => {
+type ObjType = { [key: string]: unknown };
+const validateSpec = <T>(spec: any, data: ObjType, optionalConfig = {}): T => {
 	try {
 		const value = spec.parse(data, {
 			allowUnknown: true,
@@ -209,12 +212,49 @@ router.post("/search", async (req: Request, res: Response) => {
 	}
 });
 
-router.post("/logs", async (req: Request, res: Response) => {
-	const log: ILog = req.body?.log;
-	services.logs.create(log);
-	await services.em.flush();
-	res.status(200).json({ success: true });
-});
+router.post(
+	"/logs",
+	async (req: Request, res: Response, next: NextFunction) => {
+		const { authorization: token, appName } = req.headers;
+		if (token) {
+			try {
+				let apiSecret = "";
+				if (token.startsWith("Bearer ")) {
+					apiSecret = token.split(" ")[1];
+				}
+				const isApiSecretValid = await verify({
+					apiSecret,
+					appName: appName as string,
+				});
+
+				req.isApiSecretValid = isApiSecretValid;
+				return next();
+			} catch (error) {
+				return res
+					.status(error?.statusCode || HTTP_STATUS_CODES.UNAUTHORIZED)
+					.send({
+						status: "error",
+						message:
+							error?.message ||
+							"Unauthorized request, please provide a valid token.",
+						data: null,
+					});
+			}
+		} else {
+			return res.status(HTTP_STATUS_CODES.UNAUTHORIZED).send({
+				status: "error",
+				message: "Unauthorized request, please login",
+				data: null,
+			});
+		}
+	},
+	async (req: Request, res: Response) => {
+		const log: ILog = req.body?.log;
+		services.logs.create(log);
+		await services.em.flush();
+		res.status(HTTP_STATUS_CODES.OK).json({ success: true });
+	}
+);
 
 router.post("/logs/bulk", async (req: Request, res: Response) => {
 	const logs: ILog[] = req.body?.logs;
@@ -222,7 +262,7 @@ router.post("/logs/bulk", async (req: Request, res: Response) => {
 		services.logs.create(log);
 	});
 	await services.em.flush();
-	res.status(200).json({ success: true });
+	res.status(HTTP_STATUS_CODES.OK).json({ success: true });
 });
 
 const createChecksum = (appName: string) => {
@@ -301,6 +341,36 @@ const createSecretKey = (appName: string) => {
 	return `chbxsk_${apiKey}${checkSum}_ZEE`;
 };
 
+const verify = async (params: { appName: string; apiSecret: string }) => {
+	const spec = z
+		.object({
+			appName: z.string(),
+			apiSecret: z.string(),
+		})
+		.required();
+	type specType = z.infer<typeof spec>;
+	const { appName, apiSecret } = validateSpec<specType>(spec, params);
+
+	// Extract the appName and the public/private key data from the apiKey and apiSecret
+	const [typeApiSecret, _privateKeyHashWithChecksum] = apiSecret.split("_");
+
+	if (typeApiSecret !== "chbxsk") {
+		throw new InvalidKeyError({});
+	}
+
+	const appKey = await services.appKeys.findOne({ appName: appName });
+	if (!appKey) {
+		throw new AppNotFoundError({
+			message: `Application: ${appName} not found`,
+		});
+	}
+
+	const recomputedPrivateKey = appKey.apiSecret;
+
+	// Check if the recomputed hashes match the original API key and secret
+	return hashKeys(apiSecret) === recomputedPrivateKey;
+};
+
 router.post("/apps/authorize", async (req: Request, res: Response) => {
 	try {
 		const spec = z
@@ -322,7 +392,7 @@ router.post("/apps/authorize", async (req: Request, res: Response) => {
 				existingAppKey.status === "active" &&
 				existingAppKey.expires > Date.now();
 			if (appKeyIsActive) {
-				return res.status(409).json({
+				return res.status(HTTP_STATUS_CODES.CONFLICT).json({
 					success: false,
 					message: `Application: ${appName} has already been authorized`,
 				});
@@ -342,13 +412,13 @@ router.post("/apps/authorize", async (req: Request, res: Response) => {
 		}
 		await services.em.flush();
 
-		return res.status(201).json({
+		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
 			message: `Application: ${appName} has been successfully authorized`,
 			apiSecret,
 		});
 	} catch (error) {
-		return res.status(500).json({
+		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
 			success: false,
 			message: `Application has not been authorized successfully`,
 		});
@@ -357,53 +427,30 @@ router.post("/apps/authorize", async (req: Request, res: Response) => {
 
 router.post("/apps/verify", async (req: Request, res: Response) => {
 	try {
-		const spec = z
-			.object({
-				appName: z.string(),
-				apiSecret: z.string(),
-			})
-			.required();
-		type specType = z.infer<typeof spec>;
-		const { appName, apiSecret } = validateSpec<specType>(spec, req.body);
-
-		// Extract the appName and the public/private key data from the apiKey and apiSecret
-		const [typeApiSecret, _privateKeyHashWithChecksum] = apiSecret.split("_");
-
-		if (typeApiSecret !== "chbxsk") {
-			return res.status(400).json({
-				success: false,
-				message: "Invalid API key format",
-			});
-		}
-
-		const appKey = await services.appKeys.findOne({ appName: appName });
-		if (!appKey) {
-			return res.status(404).json({
-				success: false,
-				message: `Application: ${appName} not found`,
-			});
-		}
-
-		const recomputedPrivateKey = appKey.apiSecret;
-
-		// Check if the recomputed hashes match the original API key and secret
-		const isApiSecretValid = hashKeys(apiSecret) === recomputedPrivateKey;
+		const isApiSecretValid = await verify(req.body);
 
 		if (isApiSecretValid) {
-			return res.status(200).json({
+			return res.status(HTTP_STATUS_CODES.OK).json({
 				success: true,
 				message: "API secret is valid",
 			});
 		}
-		return res.status(401).json({
+		return res.status(HTTP_STATUS_CODES.UNAUTHORIZED).json({
 			success: false,
 			message: "Invalid API secret",
 		});
 	} catch (error) {
-		return res.status(500).json({
-			success: false,
-			message: "Invalid API secret",
-		});
+		if (error instanceof HTTPError) {
+			return res.status(error?.statusCode).json({
+				success: false,
+				message: error?.message,
+			});
+		} else {
+			return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+				success: false,
+				message: "Invalid API secret",
+			});
+		}
 	}
 });
 
@@ -419,7 +466,7 @@ router.post("/apps/revoke", async (req: Request, res: Response) => {
 
 		const appKey = await services.appKeys.findOne({ appName: appName });
 		if (!appKey) {
-			return res.status(404).json({
+			return res.status(HTTP_STATUS_CODES.NOTFOUND).json({
 				success: false,
 				message: `Application: ${appName} not found`,
 			});
@@ -427,12 +474,12 @@ router.post("/apps/revoke", async (req: Request, res: Response) => {
 		appKey.status = AppKeyStatus.DISABLED;
 		await services.em.flush();
 
-		return res.status(404).json({
+		return res.status(HTTP_STATUS_CODES.NOTFOUND).json({
 			success: false,
 			message: `Application: ${appName} not found`,
 		});
 	} catch (error) {
-		return res.status(500).json({
+		return res.status(HTTP_STATUS_CODES.SERVICE_UNAVAILABLE).json({
 			success: false,
 			message: "API secret revocation not succesfully",
 		});
