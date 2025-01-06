@@ -36,6 +36,10 @@ export class Log extends BaseEntity {
 	@Property()
 	key: string;
 
+	@Index({ type: "fulltext" })
+	@Property()
+	appName: string;
+
 	constructor(
 		name: string,
 		data: object,
@@ -46,7 +50,8 @@ export class Log extends BaseEntity {
 		request: string,
 		response: string,
 		timeTaken: string,
-		key: string
+		key: string,
+		appName: string
 	) {
 		super();
 		this.name = name;
@@ -59,5 +64,6 @@ export class Log extends BaseEntity {
 		this.response = response;
 		this.timeTaken = timeTaken;
 		this.key = key;
+		this.appName = appName;
 	}
 }

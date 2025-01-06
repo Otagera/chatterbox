@@ -11,6 +11,6 @@ declare global {
 
 declare module "http" {
 	interface IncomingHttpHeaders {
-		appName?: string;
+		appname?: string;
 	}
 }

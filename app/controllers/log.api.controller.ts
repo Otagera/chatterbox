@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import Router from "express-promise-router";
-import { z } from "zod";
+import { ZodError, ZodType, z } from "zod";
 import md5 from "md5";
 import crypto from "crypto";
 
 import { paginationState } from "../../index";
 import { services } from "../db";
-import { IAppKey, ILog } from "../interfaces";
+import { IAppKey, IBaseLog, ILog } from "../interfaces";
 import { AppKeyStatus } from "../entities";
 import {
 	InvalidKeyError,
@@ -215,7 +215,7 @@ router.post("/search", async (req: Request, res: Response) => {
 router.post(
 	"/logs",
 	async (req: Request, res: Response, next: NextFunction) => {
-		const { authorization: token, appName } = req.headers;
+		const { authorization: token, appname: appName } = req.headers;
 		if (token) {
 			try {
 				let apiSecret = "";
@@ -224,35 +224,81 @@ router.post(
 				}
 				const isApiSecretValid = await verify({
 					apiSecret,
-					appName: appName as string,
+					appName,
 				});
 
-				req.isApiSecretValid = isApiSecretValid;
-				return next();
+				if (isApiSecretValid) {
+					req.body.log.appName = appName;
+					return next();
+				}
+
+				throw new HTTPError({});
 			} catch (error) {
-				return res
-					.status(error?.statusCode || HTTP_STATUS_CODES.UNAUTHORIZED)
-					.send({
+				if (error instanceof HTTPError) {
+					return res.status(error?.statusCode).json({
 						status: "error",
-						message:
-							error?.message ||
-							"Unauthorized request, please provide a valid token.",
-						data: null,
+						message: error?.message,
 					});
+				} else {
+					return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+						status: "error",
+						message: "Unauthorized request, please provide a valid secret key.",
+					});
+				}
 			}
 		} else {
 			return res.status(HTTP_STATUS_CODES.UNAUTHORIZED).send({
 				status: "error",
-				message: "Unauthorized request, please login",
+				message: "Unauthorized request.",
 				data: null,
 			});
 		}
 	},
 	async (req: Request, res: Response) => {
-		const log: ILog = req.body?.log;
-		services.logs.create(log);
-		await services.em.flush();
-		res.status(HTTP_STATUS_CODES.OK).json({ success: true });
+		try {
+			const logParam = req.body?.log;
+			const spec = z.object({
+				level: z.string(),
+				name: z.string(),
+				context: z.object({}).optional(),
+				time: z.union([z.date(), z.number()]),
+				data: z.record(z.any()).optional(),
+				traceId: z.string().optional(),
+				request: z.string().optional(),
+				response: z.string().optional(),
+				timeTaken: z.string().optional(),
+				key: z.string(),
+				appName: z.string(),
+			});
+			type specType = z.infer<typeof spec>;
+			const log = validateSpec<specType>(spec, logParam);
+
+			const appKey = await services.appKeys.findOne({ appName: log.appName });
+			log.data = encryptObj(log.data, appKey?.appName);
+
+			services.logs.create(log as ILog);
+			await services.em.flush();
+			res
+				.status(HTTP_STATUS_CODES.OK)
+				.json({ success: true, message: "Logged succesfully" });
+		} catch (error) {
+			if (error instanceof HTTPError) {
+				return res.status(error?.statusCode).json({
+					success: false,
+					message: error?.message,
+				});
+			} else if (error instanceof ZodError) {
+				return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+					success: false,
+					message: JSON.parse(error?.message),
+				});
+			} else {
+				return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+					success: false,
+					message: "Invalid API secret",
+				});
+			}
+		}
 	}
 );
 
@@ -285,16 +331,18 @@ const getKeyAndIV = (id: string) => {
 	return { key, iv };
 };
 
-const encryptObj = (obj: object) => encrypt(JSON.stringify(obj));
-const decryptObj = (ciphertext: string) => JSON.parse(decrypt(ciphertext));
+const encryptObj = (obj: object, appId: string) =>
+	encrypt(JSON.stringify(obj), appId);
+const decryptObj = (ciphertext: string, appId: string) =>
+	JSON.parse(decrypt(ciphertext, appId));
 
 /**
  * Encrypts a given text using AES-256-CBC.
  * @param {string} plaintext - The text to encrypt.
  * @returns {string} - The encrypted text in base64 format.
  */
-const encrypt = (plaintext: string): string => {
-	const { key, iv } = getKeyAndIV("672f733601e71da46a3f1224");
+const encrypt = (plaintext: string, appId: string): string => {
+	const { key, iv } = getKeyAndIV(appId);
 	const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
 	let encrypted = cipher.update(plaintext, "utf8", "base64");
 	encrypted += cipher.final("base64");
@@ -306,8 +354,8 @@ const encrypt = (plaintext: string): string => {
  * @param {string} ciphertext - The encrypted text in base64 format.
  * @returns {string} - The decrypted text.
  */
-const decrypt = (ciphertext: string): string => {
-	const { key, iv } = getKeyAndIV("672f733601e71da46a3f1224");
+const decrypt = (ciphertext: string, appId: string): string => {
+	const { key, iv } = getKeyAndIV(appId);
 	const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
 	let decrypted = decipher.update(ciphertext, "base64", "utf8");
 	decrypted += decipher.final("utf8");
@@ -316,15 +364,15 @@ const decrypt = (ciphertext: string): string => {
 
 // Example usage
 const text = "Server started on port 3682";
-const encryptedText = encrypt(text);
-const decryptedText = decrypt(encryptedText);
+const encryptedText = encrypt(text, "672f733601e71da46a3f1224");
+const decryptedText = decrypt(encryptedText, "672f733601e71da46a3f1224");
 
 const obj = {
 	msg: "Server started on port 3682",
 	duration: "0.663s",
 };
-const encryptedObj = encryptObj(obj);
-const decryptedObj = decryptObj(encryptedObj);
+const encryptedObj = encryptObj(obj, "672f733601e71da46a3f1224");
+const decryptedObj = decryptObj(encryptedObj, "672f733601e71da46a3f1224");
 
 console.log("Original Text:", text);
 console.log("Encrypted Text:", encryptedText);
@@ -341,7 +389,7 @@ const createSecretKey = (appName: string) => {
 	return `chbxsk_${apiKey}${checkSum}_ZEE`;
 };
 
-const verify = async (params: { appName: string; apiSecret: string }) => {
+const verify = async (params: { appName?: string; apiSecret?: string }) => {
 	const spec = z
 		.object({
 			appName: z.string(),
@@ -358,7 +406,7 @@ const verify = async (params: { appName: string; apiSecret: string }) => {
 		throw new InvalidKeyError({});
 	}
 
-	const appKey = await services.appKeys.findOne({ appName: appName });
+	const appKey = await services.appKeys.findOne({ appName });
 	if (!appKey) {
 		throw new AppNotFoundError({
 			message: `Application: ${appName} not found`,

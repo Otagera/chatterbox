@@ -1,6 +1,8 @@
 import { IBaseEntity } from "./IBaseEntity";
 
-export interface ILog extends IBaseEntity {
+export interface ILog extends IBaseLog, IBaseEntity {}
+
+export interface IBaseLog {
 	level: string;
 	name: string;
 	context?: object;
@@ -11,4 +13,5 @@ export interface ILog extends IBaseEntity {
 	response?: string;
 	timeTaken?: string;
 	key: string;
+	appName: string;
 }
