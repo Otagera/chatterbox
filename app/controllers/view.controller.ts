@@ -1,8 +1,9 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import Router from "express-promise-router";
 
 import { paginationState } from "../../index";
 import { services } from "../db";
+import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ const getLevelStyle = (level: string) => {
 	}
 };
 
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", authMiddleware, async (req: Request, res: Response) => {
 	try {
 		const logs = await services.logs.findByCursor(
 			{},
@@ -51,4 +52,4 @@ router.get("/login", async (req: Request, res: Response) => {
 	}
 });
 
-export const LogViewController = router;
+export const ViewController = router;

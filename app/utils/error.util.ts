@@ -6,6 +6,7 @@ type ErrorPropType = {
 	action?: string;
 	value?: string;
 	message?: string;
+	statusCode?: number;
 };
 
 const { HTTP_STATUS_CODES } = constantsUtil;

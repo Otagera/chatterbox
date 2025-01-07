@@ -17,9 +17,6 @@ export class AppKey extends BaseEntity {
 	apiSecret: string;
 
 	@Property()
-	config?: string;
-
-	@Property()
 	expires: number;
 
 	@Enum({ items: () => AppKeyStatus, default: AppKeyStatus.ACTIVE })
@@ -28,20 +25,23 @@ export class AppKey extends BaseEntity {
 	@ManyToOne({ entity: () => User, nullable: true })
 	user: User;
 
+	@Property({ nullable: true })
+	config?: string;
+
 	constructor(
 		appName: string,
 		apiSecret: string,
-		config: string,
 		expires: number,
 		status: AppKeyStatus,
-		user: User
+		user: User,
+		config?: string
 	) {
 		super();
 		this.appName = appName;
 		this.apiSecret = apiSecret;
-		this.config = config;
 		this.expires = expires;
 		this.status = status;
 		this.user = user;
+		this.config = config;
 	}
 }

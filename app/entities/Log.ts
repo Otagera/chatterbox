@@ -18,7 +18,7 @@ export class Log extends BaseEntity {
 
 	@Index({ type: "fulltext" })
 	@Property({ nullable: true })
-	data?: object | string;
+	data?: Record<string, any> | string;
 
 	@Property({ nullable: true })
 	traceId?: string;
@@ -42,7 +42,7 @@ export class Log extends BaseEntity {
 
 	constructor(
 		name: string,
-		data: object | string,
+		data: Record<string, any> | string,
 		context: [] | object,
 		time: Date,
 		level: string,

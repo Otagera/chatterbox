@@ -8,7 +8,7 @@ html(lang='en')
       body {padding: 20px}
   body
     h1 Chatterbox | Login
-    form(hx-post="/api/login" hx-swap="innerHTML" hx-target="#new-log" class="mb-3")
-      input(type="email" placeholder="Email" name="level" class="form-control mb-3" list="levelDatalistOptions")
+    form(hx-post="/api/login" hx-swap="outerHTML" class="mb-3")
+      input(type="email" placeholder="Email" name="email" class="form-control mb-3")
       button(type="submit" class="btn btn-primary") Login
     
