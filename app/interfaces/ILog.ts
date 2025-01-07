@@ -7,7 +7,7 @@ export interface IBaseLog {
 	name: string;
 	context?: object;
 	time: Date;
-	data?: object;
+	data?: object | string;
 	traceId?: string;
 	request?: string;
 	response?: string;

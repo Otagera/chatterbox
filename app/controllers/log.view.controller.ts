@@ -43,4 +43,12 @@ router.get("/", async (req: Request, res: Response) => {
 	}
 });
 
+router.get("/login", async (req: Request, res: Response) => {
+	try {
+		return res.render("login");
+	} catch (error: any) {
+		return res.send(`<p>${error ? error : "Something went wrong!!!"}`);
+	}
+});
+
 export const LogViewController = router;

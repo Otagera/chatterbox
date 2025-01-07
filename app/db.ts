@@ -1,6 +1,6 @@
 import { MikroORM, Options } from "@mikro-orm/mongodb";
 import { IServices } from "./interfaces";
-import { Log, AppKey } from "./entities";
+import { Log, AppKey, User, OTP } from "./entities";
 
 export let services: IServices;
 
@@ -17,5 +17,7 @@ export const initORM = async (options?: Options): Promise<IServices> => {
 		em: orm.em,
 		logs: orm.em.getRepository(Log),
 		appKeys: orm.em.getRepository(AppKey),
+		users: orm.em.getRepository(User),
+		OTPs: orm.em.getRepository(OTP),
 	});
 };

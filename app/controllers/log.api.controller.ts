@@ -1,19 +1,20 @@
 import { Request, Response, NextFunction } from "express";
 import Router from "express-promise-router";
-import { ZodError, ZodType, z } from "zod";
+import { ZodError, ZodType, string, z } from "zod";
 import md5 from "md5";
 import crypto from "crypto";
 
 import { paginationState } from "../../index";
 import { services } from "../db";
-import { IAppKey, IBaseLog, ILog } from "../interfaces";
-import { AppKeyStatus } from "../entities";
+import { IAppKey, IBaseLog, ILog, IUser } from "../interfaces";
+import { AppKeyStatus, OTP } from "../entities";
 import {
 	InvalidKeyError,
 	HTTPError,
 	AppNotFoundError,
 } from "../utils/error.util";
 import constantsUtil from "../utils/constants.util";
+import { User } from "../entities/User";
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 const router = Router();
@@ -46,6 +47,53 @@ const validateSpec = <T>(spec: any, data: ObjType, optionalConfig = {}): T => {
 		return value;
 	} catch (error) {
 		throw error;
+	}
+};
+
+// middleware
+const authMiddleware = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const { authorization: token, appname: appName } = req.headers;
+	if (token) {
+		try {
+			let apiSecret = "";
+			if (token.startsWith("Bearer ")) {
+				apiSecret = token.split(" ")[1];
+			}
+			const isApiSecretValid = await verify({
+				apiSecret,
+				appName,
+			});
+
+			if (isApiSecretValid) {
+				req.body.log.appName = appName;
+				req.appName = appName;
+				return next();
+			}
+
+			throw new HTTPError({});
+		} catch (error) {
+			if (error instanceof HTTPError) {
+				return res.status(error?.statusCode).json({
+					status: "error",
+					message: error?.message,
+				});
+			} else {
+				return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+					status: "error",
+					message: "Unauthorized request, please provide a valid secret key.",
+				});
+			}
+		}
+	} else {
+		return res.status(HTTP_STATUS_CODES.UNAUTHORIZED).send({
+			status: "error",
+			message: "Unauthorized request.",
+			data: null,
+		});
 	}
 };
 
@@ -96,27 +144,43 @@ router.get("/get-more-logs", async (req: Request, res: Response) => {
 	}
 });
 
-router.get("/get-log-data/:id", async (req: Request, res: Response) => {
-	const id = req.params.id;
-	try {
-		const log = await services.logs.findOneOrFail(id);
-		if (!log) {
-			throw new Error("Something went wrong!!!");
-		}
-		let logData = {};
-		const { data, name, context, traceId, request, response, timeTaken } = log;
-		logData = {
-			...data,
-			name,
-			context,
-			traceId,
-			request,
-			response,
-			timeTaken,
-		};
+router.get(
+	"/get-log-data/:id",
+	authMiddleware,
+	async (req: Request, res: Response) => {
+		const id = req.params.id;
+		try {
+			const log = await services.logs.findOneOrFail(id);
+			if (!log) {
+				throw new Error("Something went wrong!!!");
+			}
+			let logData = {};
+			const {
+				data: possibleData,
+				name,
+				context,
+				traceId,
+				request,
+				response,
+				timeTaken,
+			} = log;
+			let data = possibleData;
+			if (typeof data === "string") {
+				data = decryptObj(data, req.appName || "");
+			}
 
-		return res.send(
-			`
+			logData = {
+				...data,
+				name,
+				context,
+				traceId,
+				request,
+				response,
+				timeTaken,
+			};
+
+			return res.send(
+				`
       <td style="max-width: 400px;">
         <small class="text-muted"> ${log?.time}</small>
         <br>
@@ -139,11 +203,12 @@ router.get("/get-log-data/:id", async (req: Request, res: Response) => {
         "> ${JSON.stringify(logData, null, 4)} </pre>
       </td>
       `
-		);
-	} catch (error: any) {
-		return res.send(`<p>${error ? error : "Something went wrong!!!"}`);
+			);
+		} catch (error: any) {
+			return res.send(`<p>${error ? error : "Something went wrong!!!"}`);
+		}
 	}
-});
+);
 
 router.post("/search", async (req: Request, res: Response) => {
 	let filter: {
@@ -212,95 +277,52 @@ router.post("/search", async (req: Request, res: Response) => {
 	}
 });
 
-router.post(
-	"/logs",
-	async (req: Request, res: Response, next: NextFunction) => {
-		const { authorization: token, appname: appName } = req.headers;
-		if (token) {
-			try {
-				let apiSecret = "";
-				if (token.startsWith("Bearer ")) {
-					apiSecret = token.split(" ")[1];
-				}
-				const isApiSecretValid = await verify({
-					apiSecret,
-					appName,
-				});
+router.post("/logs", authMiddleware, async (req: Request, res: Response) => {
+	try {
+		const logParam = req.body?.log;
+		const spec = z.object({
+			level: z.string(),
+			name: z.string(),
+			context: z.object({}).optional(),
+			time: z.union([z.date(), z.number()]),
+			data: z.record(z.any()).optional(),
+			traceId: z.string().optional(),
+			request: z.string().optional(),
+			response: z.string().optional(),
+			timeTaken: z.string().optional(),
+			key: z.string(),
+			appName: z.string(),
+		});
+		type specType = z.infer<typeof spec>;
+		const log = validateSpec<specType>(spec, logParam);
 
-				if (isApiSecretValid) {
-					req.body.log.appName = appName;
-					return next();
-				}
+		const appKey = await services.appKeys.findOne({ appName: log.appName });
+		// log.data = encryptObj(log.data, appKey?.appName);
 
-				throw new HTTPError({});
-			} catch (error) {
-				if (error instanceof HTTPError) {
-					return res.status(error?.statusCode).json({
-						status: "error",
-						message: error?.message,
-					});
-				} else {
-					return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
-						status: "error",
-						message: "Unauthorized request, please provide a valid secret key.",
-					});
-				}
-			}
+		services.logs.create(log as ILog);
+		await services.em.flush();
+		res
+			.status(HTTP_STATUS_CODES.OK)
+			.json({ success: true, message: "Logged succesfully" });
+	} catch (error) {
+		if (error instanceof HTTPError) {
+			return res.status(error?.statusCode).json({
+				success: false,
+				message: error?.message,
+			});
+		} else if (error instanceof ZodError) {
+			return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+				success: false,
+				message: JSON.parse(error?.message),
+			});
 		} else {
-			return res.status(HTTP_STATUS_CODES.UNAUTHORIZED).send({
-				status: "error",
-				message: "Unauthorized request.",
-				data: null,
+			return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+				success: false,
+				message: "Invalid API secret",
 			});
-		}
-	},
-	async (req: Request, res: Response) => {
-		try {
-			const logParam = req.body?.log;
-			const spec = z.object({
-				level: z.string(),
-				name: z.string(),
-				context: z.object({}).optional(),
-				time: z.union([z.date(), z.number()]),
-				data: z.record(z.any()).optional(),
-				traceId: z.string().optional(),
-				request: z.string().optional(),
-				response: z.string().optional(),
-				timeTaken: z.string().optional(),
-				key: z.string(),
-				appName: z.string(),
-			});
-			type specType = z.infer<typeof spec>;
-			const log = validateSpec<specType>(spec, logParam);
-
-			const appKey = await services.appKeys.findOne({ appName: log.appName });
-			log.data = encryptObj(log.data, appKey?.appName);
-
-			services.logs.create(log as ILog);
-			await services.em.flush();
-			res
-				.status(HTTP_STATUS_CODES.OK)
-				.json({ success: true, message: "Logged succesfully" });
-		} catch (error) {
-			if (error instanceof HTTPError) {
-				return res.status(error?.statusCode).json({
-					success: false,
-					message: error?.message,
-				});
-			} else if (error instanceof ZodError) {
-				return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
-					success: false,
-					message: JSON.parse(error?.message),
-				});
-			} else {
-				return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
-					success: false,
-					message: "Invalid API secret",
-				});
-			}
 		}
 	}
-);
+});
 
 router.post("/logs/bulk", async (req: Request, res: Response) => {
 	const logs: ILog[] = req.body?.logs;
@@ -325,6 +347,13 @@ const hashKeys = (key: string) => {
 		.digest("hex");
 };
 
+const hashOTPs = (otp: string) => {
+	return crypto
+		.createHash("sha256")
+		.update(otp + "OTP90", "utf-8")
+		.digest("hex");
+};
+
 const getKeyAndIV = (id: string) => {
 	const key = crypto.createHash("sha256").update(id).digest(); // 32 bytes for AES-256
 	const iv = crypto.createHash("md5").update(id).digest();
@@ -333,7 +362,7 @@ const getKeyAndIV = (id: string) => {
 
 const encryptObj = (obj: object, appId: string) =>
 	encrypt(JSON.stringify(obj), appId);
-const decryptObj = (ciphertext: string, appId: string) =>
+const decryptObj = (ciphertext: string, appId: string): Record<string, any> =>
 	JSON.parse(decrypt(ciphertext, appId));
 
 /**
@@ -418,6 +447,83 @@ const verify = async (params: { appName?: string; apiSecret?: string }) => {
 	// Check if the recomputed hashes match the original API key and secret
 	return hashKeys(apiSecret) === recomputedPrivateKey;
 };
+
+const generateOTP = (length = 6) => {
+	if (!Number.isInteger(length) || length <= 0) {
+		throw new Error("Length must be a positive integer");
+	}
+
+	let otp = "";
+	for (let i = 0; i < length; i++) {
+		otp += crypto.randomInt(10); // Generate a digit between 0-9
+	}
+	return otp;
+};
+
+const sendOTP = (otp: string, email: string) => {};
+
+router.post("/users/login", async (req: Request, res: Response) => {
+	try {
+		const spec = z
+			.object({
+				email: z.string().email(),
+			})
+			.required();
+		type specType = z.infer<typeof spec>;
+		const { email } = validateSpec<specType>(spec, req.body);
+
+		let user = await services.users.findOne({ email });
+		const generatedOTP = generateOTP();
+
+		if (!user) {
+			user = new User(email);
+			services.em.persist(user);
+		}
+		const otp = new OTP(hashOTPs(generatedOTP), user);
+		services.em.persist(otp);
+		await services.em.flush();
+		// Simulate sending email
+		sendOTP(generatedOTP, email);
+		return res.status(HTTP_STATUS_CODES.CREATED).json({
+			success: true,
+			message: `User: ${email} OTP sent successfully`,
+			generatedOTP,
+		});
+	} catch (error) {
+		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
+			success: false,
+			message: `Application has not been authorized successfully`,
+		});
+	}
+});
+
+router.post("/users/otp", async (req: Request, res: Response) => {
+	try {
+		const spec = z
+			.object({
+				otp: z.string(),
+				email: z.string().email(),
+			})
+			.required();
+		type specType = z.infer<typeof spec>;
+		const { otp, email } = validateSpec<specType>(spec, req.body);
+
+		let user = await services.users.findOne({ email });
+		let existingOTP = await services.OTPs.findOne({ user, otp: hashOTPs(otp) });
+
+		if (existingOTP) {
+			return res.status(HTTP_STATUS_CODES.OK).json({
+				success: true,
+				message: `Okay`,
+			});
+		}
+	} catch (error) {
+		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
+			success: false,
+			message: `Application has not been authorized successfully`,
+		});
+	}
+});
 
 router.post("/apps/authorize", async (req: Request, res: Response) => {
 	try {

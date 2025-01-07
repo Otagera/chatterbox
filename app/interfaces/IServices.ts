@@ -1,6 +1,6 @@
 import http from "http";
 import { EntityManager, EntityRepository, MikroORM } from "@mikro-orm/mongodb";
-import { Log, AppKey } from "../entities";
+import { Log, AppKey, User, OTP } from "../entities";
 
 export interface IServices {
 	server?: http.Server;
@@ -8,4 +8,6 @@ export interface IServices {
 	em: EntityManager;
 	logs: EntityRepository<Log>;
 	appKeys: EntityRepository<AppKey>;
+	users: EntityRepository<User>;
+	OTPs: EntityRepository<OTP>;
 }

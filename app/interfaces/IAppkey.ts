@@ -1,5 +1,6 @@
 import { AppKeyStatus } from "../entities";
 import { IBaseEntity } from "./IBaseEntity";
+import { IUser } from "./IUser";
 
 export interface IAppKey extends IBaseEntity {
 	appName: string;
@@ -11,4 +12,6 @@ export interface IAppKey extends IBaseEntity {
 	expires: number;
 
 	status: AppKeyStatus;
+
+	user: IUser;
 }
