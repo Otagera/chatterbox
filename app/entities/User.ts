@@ -7,8 +7,12 @@ export class User extends BaseEntity {
 	@Unique()
 	email: string;
 
-	constructor(email: string) {
+	@Property()
+	loginToken?: string;
+
+	constructor(email: string, loginToken?: string) {
 		super();
 		this.email = email;
+		this.loginToken = loginToken;
 	}
 }
