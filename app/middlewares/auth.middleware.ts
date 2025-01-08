@@ -93,23 +93,20 @@ export const authMiddleware = async (
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
-		console.log("req.isBrowser", req.isBrowser);
 		if (req.isBrowser) {
-			console.log("user");
-
 			return res.send(`
         <html>
           <head>
             <title>Redirecting...</title>
             <script>
               setTimeout(() => {
-                window.location.href = '/view/login';
+                window.location.href = '/login';
               }, 3000); // Redirect after 3 seconds
             </script>
           </head>
           <body>
             <h1>Please wait, you are being redirected...</h1>
-            <p>If you are not redirected automatically, <a href="/view/login">click here</a>.</p>
+            <p>If you are not redirected automatically, <a href="/login">click here</a>.</p>
           </body>
         </html>
       `);

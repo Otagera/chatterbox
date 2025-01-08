@@ -37,6 +37,13 @@ export const hashOTPs = (otp: string) => {
 		.digest("hex");
 };
 
+export const hashLogintoken = (key: string) => {
+	return crypto
+		.createHash("sha256")
+		.update(key + "ETR90", "utf-8")
+		.digest("hex");
+};
+
 export const getKeyAndIV = (id: string) => {
 	const key = crypto.createHash("sha256").update(id).digest(); // 32 bytes for AES-256
 	const iv = crypto.createHash("md5").update(id).digest();
@@ -81,4 +88,11 @@ export const createSecretKey = (appName: string) => {
 	const apiKey = crypto.randomBytes(24).toString("base64url");
 
 	return `chbxsk_${apiKey}${checkSum}_ZEE`;
+};
+
+export const createLoginToken = (email: string) => {
+	const checkSum = createChecksum(email);
+	const apiKey = crypto.randomBytes(24).toString("base64url");
+
+	return `${apiKey}${checkSum}_ETR`;
 };

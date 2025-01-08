@@ -1,14 +1,34 @@
 import z from "zod";
 import { validateSpec } from "../utils/validate.util";
-import { createSecretKey, hashKeys, hashOTPs } from "../utils/security.util";
+import {
+	createLoginToken,
+	createSecretKey,
+	generateOTP,
+	hashKeys,
+	hashLogintoken,
+	hashOTPs,
+	sendOTP,
+} from "../utils/security.util";
 import { services } from "../db";
-import { AppKey, AppKeyStatus, User } from "../entities";
+import { AppKey, AppKeyStatus, OTP, User } from "../entities";
 import { HTTPError, NotFoundError } from "../utils/error.util";
 import constantsUtil from "../utils/constants.util";
 import { IAppKey } from "../interfaces";
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 
+export const generateSaveAndSendOTP = async (user: User) => {
+	const generatedOTP = generateOTP();
+	const otp = new OTP(hashOTPs(generatedOTP), user);
+	services.em.persist(otp);
+	await services.em.flush();
+	// Simulate sending email
+	sendOTP(generatedOTP, user.email);
+};
+
+// Add password to this cause the original idea was to be passwordless
+// but there has been a significante gap between email and OTP right
+// now so I would need to add password for better security
 export const loginService = async (params: Record<string, any>) => {
 	const spec = z
 		.object({
@@ -19,15 +39,21 @@ export const loginService = async (params: Record<string, any>) => {
 	const { email } = validateSpec<specType>(spec, params);
 
 	let user = await services.users.findOne({ email });
+	const loginToken = createLoginToken(email);
+
+	const hashedLoginToken = hashLogintoken(loginToken);
 
 	if (!user) {
-		user = new User(email);
+		user = new User(email, hashedLoginToken);
 		services.em.persist(user);
+	} else {
+		user.loginToken = hashedLoginToken;
 	}
 	await services.em.flush();
 
 	let existingApps = await services.appKeys.find({ user });
-	return { email, existingApps };
+
+	return { email, existingApps, loginToken };
 };
 
 export const OTPService = async (params: Record<string, any>) => {
@@ -52,7 +78,7 @@ export const authorizeService = async (params: Record<string, any>) => {
 		.object({
 			email: z.string().email(),
 			appName: z.string(),
-			expires: z.number().int().min(1).default(10),
+			expires: z.coerce.number().int().min(1).default(10),
 		})
 		.required();
 	type specType = z.infer<typeof spec>;

@@ -5,17 +5,14 @@ import { paginationState } from "../../index";
 import { services } from "../db";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
-import { AppKey, OTP } from "../entities";
+import { AppKey } from "../entities";
+import { decryptObj, hashLogintoken } from "../utils/security.util";
 import {
-	decryptObj,
-	generateOTP,
-	hashOTPs,
-	sendOTP,
-} from "../utils/security.util";
-import { OTPService, authorizeService, loginService } from "./services";
-import constantsUtil from "../utils/constants.util";
-
-const { HTTP_STATUS_CODES } = constantsUtil;
+	OTPService,
+	authorizeService,
+	generateSaveAndSendOTP,
+	loginService,
+} from "./services";
 
 const router = Router();
 
@@ -246,7 +243,7 @@ router.post("/view/search", async (req: Request, res: Response) => {
 
 router.post("/view/login", async (req: Request, res: Response) => {
 	try {
-		const { email, existingApps } = await loginService(req.body);
+		const { email, existingApps, loginToken } = await loginService(req.body);
 		const getApps = (apps: AppKey[]) => {
 			let appHTML = "";
 			apps.forEach((app) => {
@@ -256,7 +253,7 @@ router.post("/view/login", async (req: Request, res: Response) => {
 						hx-trigger="click"
 						hx-target="#appsList"
 						hx-swap="outerHTML"
-						hx-get="/view/apps?appName=${app.appName}"
+						hx-get="/view/apps?appName=${app.appName}&loginToken=${loginToken}"
 						class="text-primary text-decoration-underline"
 						style="cursor:pointer"> 
 							${app.appName}
@@ -276,7 +273,7 @@ router.post("/view/login", async (req: Request, res: Response) => {
 						hx-trigger="click"
 						hx-target="#appsList"
 						hx-swap="outerHTML"
-						hx-get="/view/apps?newEmail=${email}"
+						hx-get="/view/apps?newEmail=${email}&loginToken=${loginToken}"
 						class="text-primary text-decoration-underline"
 						style="cursor:pointer"> 
 							Add new Application
@@ -291,59 +288,75 @@ router.post("/view/login", async (req: Request, res: Response) => {
 	}
 });
 
+const getViewApps = async (appName: string, loginToken: string) => {
+	const app = await services.appKeys.findOne({
+		appName: appName as string,
+	});
+	const user = await services.users.findOne({
+		id: app?.user.id,
+		loginToken: hashLogintoken(loginToken as string),
+	});
+	if (user) {
+		await generateSaveAndSendOTP(user);
+
+		const logHTML = `
+		<form hx-post="/view/otp?appName=${appName}" hx-boost="true">
+			<h3>${user.email}</h3>
+			<input type="email" placeholder="Email" name="email" class="d-none form-control mb-3" value="${user.email}"/>
+			<input type="number" placeholder="OTP" name="otp" class="form-control mb-3" />
+			<button type="submit" class="btn btn-primary"> Login </button>
+		</form>
+	`;
+		return logHTML;
+	}
+	throw new Error("Login failed, please try again");
+};
+
 router.get("/view/apps", async (req: Request, res: Response) => {
 	try {
-		const { appName, email } = req.query;
-		if (appName) {
-			const app = await services.appKeys.findOne({
-				appName: appName as string,
+		const { appName, newEmail, loginToken } = req.query;
+		if (appName && loginToken) {
+			const appsHTML = await getViewApps(
+				appName as string,
+				loginToken as string
+			);
+			return res.send(appsHTML);
+		} else if (newEmail && loginToken) {
+			const user = await services.users.findOne({
+				email: newEmail as string,
+				loginToken: hashLogintoken(loginToken as string),
 			});
-			const user = await services.users.findOne({ id: app?.user.id });
-			if (user) {
-				const generatedOTP = generateOTP();
-				const otp = new OTP(hashOTPs(generatedOTP), user);
-				services.em.persist(otp);
-				await services.em.flush();
-				// Simulate sending email
-				sendOTP(generatedOTP, user.email);
 
+			if (user) {
 				const logHTML = `
-				<form hx-post="/view/otp?appName=${appName}" hx-boost="true">
-					<h3>${user.email}</h3>
-					<input type="email" placeholder="Email" name="email" class="d-none form-control mb-3" value="${user.email}"/>
-					<input type="number" placeholder="OTP" name="otp" class="form-control mb-3" />
-					<button type="submit" class="btn btn-primary"> Login </button>
+				<form hx-post="/view/apps?loginToken=${loginToken}" hx-boost="true">
+					<h3>Create New App</h3>
+					<h3>${user?.email}</h3>
+					<input type="email" placeholder="Email" name="email" class="d-none form-control mb-3" value="${user?.email}" />
+					<input type="text" placeholder="App Name" name="appName" class="form-control mb-3" />
+					<input type="number" placeholder="Expires (In seconds)" name="expires" class="d-none form-control mb-3" value="1" />
+					<button type="submit" class="btn btn-primary"> Create App </button>
 				</form>
 			`;
 				return res.send(logHTML);
 			}
-		} else if (email) {
-			const user = await services.users.findOne({ email: email as string });
-
-			/*
-appName: string,
-		apiSecret: string,
-		expires: number,
-		status: AppKeyStatus,
-		user: User, 
- */
-
-			const logHTML = `
-				<form hx-post="/view/otp?appName=${appName}" hx-boost="true">
-					<h3>${user?.email}</h3>
-					<input type="email" placeholder="Email" name="email" class="d-none form-control mb-3" value="${user?.email}"/>
-					<input type="text" placeholder="App Name" name="email" class="form-control mb-3" />
-					<input type="number" placeholder="Expires (In seconds)" name="email" class="form-control mb-3" />
-					<button type="submit" class="btn btn-primary"> Create App </button>
-				</form>
-			`;
-			return res.send(logHTML);
+			throw new Error();
 		}
 	} catch (error) {
-		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
-			success: false,
-			message: `Application has not been authorized successfully`,
-		});
+		return res.send(`<p>${error ? error : "Something went wrong!!!"}`);
+	}
+});
+
+router.post("/view/apps", async (req: Request, res: Response) => {
+	try {
+		const { loginToken } = req.query;
+		const { appName } = await authorizeService(req.body);
+
+		const appsHTML = await getViewApps(appName as string, loginToken as string);
+		return res.send(appsHTML);
+	} catch (error) {
+		console.log("error", error);
+		return res.send(`<p>${error ? error : "Something went wrong!!!"}`);
 	}
 });
 
