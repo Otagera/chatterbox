@@ -1,14 +1,8 @@
 import z from "zod";
 import { validateSpec } from "../utils/validate.util";
-import {
-	createSecretKey,
-	generateOTP,
-	hashKeys,
-	hashOTPs,
-	sendOTP,
-} from "../utils/security.util";
+import { createSecretKey, hashKeys, hashOTPs } from "../utils/security.util";
 import { services } from "../db";
-import { AppKey, AppKeyStatus, OTP, User } from "../entities";
+import { AppKey, AppKeyStatus, User } from "../entities";
 import { HTTPError, NotFoundError } from "../utils/error.util";
 import constantsUtil from "../utils/constants.util";
 import { IAppKey } from "../interfaces";
@@ -25,20 +19,15 @@ export const loginService = async (params: Record<string, any>) => {
 	const { email } = validateSpec<specType>(spec, params);
 
 	let user = await services.users.findOne({ email });
-	const generatedOTP = generateOTP();
 
 	if (!user) {
 		user = new User(email);
 		services.em.persist(user);
 	}
-	const otp = new OTP(hashOTPs(generatedOTP), user);
-	services.em.persist(otp);
 	await services.em.flush();
-	// Simulate sending email
-	sendOTP(generatedOTP, email);
 
 	let existingApps = await services.appKeys.find({ user });
-	return { generatedOTP, email, existingApps };
+	return { email, existingApps };
 };
 
 export const OTPService = async (params: Record<string, any>) => {

@@ -103,13 +103,13 @@ export const authMiddleware = async (
             <title>Redirecting...</title>
             <script>
               setTimeout(() => {
-                window.location.href = '/login';
+                window.location.href = '/view/login';
               }, 3000); // Redirect after 3 seconds
             </script>
           </head>
           <body>
             <h1>Please wait, you are being redirected...</h1>
-            <p>If you are not redirected automatically, <a href="/login">click here</a>.</p>
+            <p>If you are not redirected automatically, <a href="/view/login">click here</a>.</p>
           </body>
         </html>
       `);

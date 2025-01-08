@@ -12,7 +12,7 @@ html(lang='en')
       tr:nth-child(even) {background-color: #dddddd;}
   body
     h1 Chatterbox
-    form(hx-post="/api/search" hx-swap="innerHTML" hx-target="#new-log" class="mb-3")
+    form(hx-post="/api/view/search" hx-swap="innerHTML" hx-target="#new-log" class="mb-3")
       input(type="text" placeholder="Level" name="level" class="form-control mb-3" list="levelDatalistOptions")
       datalist(id="levelDatalistOptions")
         option(value="info")
@@ -45,7 +45,7 @@ html(lang='en')
           tr
             td(scope="row") #{log.id}
             td #{log.key}
-            td(hx-get=`/api/get-log-data/${log.id}` hx-target="this" role="button")
+            td(hx-get=`/api/view/get-log-data/${log.id}` hx-target="this" role="button")
               small(class="text-muted") #{log.time}
             td(class=`${log.levelStyle}`) #{log.level}
-    button(class="btn btn-primary" hx-get=`/api/get-more-logs` hx-swap="beforeend" hx-target="#new-log") Fetch More
+    button(class="btn btn-primary" hx-get=`/api/view/get-more-logs` hx-swap="beforeend" hx-target="#new-log") Fetch More
