@@ -31,8 +31,9 @@ const getLevelStyle = (level: string) => {
 
 router.get("/", authMiddleware, async (req: Request, res: Response) => {
 	try {
+		const { appName } = req.session;
 		const logs = await services.logs.findByCursor(
-			{},
+			{ appName },
 			{
 				first: 100,
 				orderBy: { time: "desc" },
