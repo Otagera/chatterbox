@@ -10,8 +10,16 @@ html(lang='en')
       tr.htmx-swapping td {opacity: 0;transition: opacity 0.5s ease-out;}
       td, th {border: 1px solid #383737;text-align: left;padding: 8px;}
       tr:nth-child(even) {background-color: #dddddd;}
+      div#copyIconContainer svg{width: 20px; height: 20px}
   body
     h1 Chatterbox
+    div(class="d-flex" style="justify-content: space-between")
+      h3 #{appName}
+      div(class="d-flex" style="justify-content: space-between")
+        p Secret Key: 
+          span(id="apiKey") #{maskKey} 
+          div(hx-trigger="click" style="width: 20px; height: 20px; padding-left: 10px;cursor:pointer;" id="copyIconContainer")
+            include ./assets/copy.svg
     form(hx-post="/api/view/search" hx-swap="innerHTML" hx-target="#new-log" class="mb-3")
       input(type="text" placeholder="Level" name="level" class="form-control mb-3" list="levelDatalistOptions")
       datalist(id="levelDatalistOptions")
@@ -49,3 +57,17 @@ html(lang='en')
               small(class="text-muted") #{log.time}
             td(class=`${log.levelStyle}`) #{log.level}
     button(class="btn btn-primary" hx-get=`/api/view/get-more-logs` hx-swap="beforeend" hx-target="#new-log") Fetch More
+
+    script.
+      const apiKeySpan = document.querySelector("#copyIconContainer");
+      apiKeySpan.onclick = () => {
+        copyToClipboard(JSON.parse(`!{JSON.stringify(user)}`));
+      }
+      const copyToClipboard = (text) => {
+          navigator.clipboard.writeText(text).then(() => {
+              console.log('Text copied to clipboard');
+          }).catch(err => {
+              console.error('Failed to copy text: ', err);
+          });
+      }
+  

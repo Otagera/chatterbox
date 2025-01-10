@@ -6,7 +6,7 @@ import { services } from "../db";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
 import { AppKey } from "../entities";
-import { decryptObj, hashLogintoken } from "../utils/security.util";
+import { decryptObj, hashLogintoken, maskKey } from "../utils/security.util";
 import {
 	OTPService,
 	authorizeService,
@@ -31,7 +31,7 @@ const getLevelStyle = (level: string) => {
 
 router.get("/", authMiddleware, async (req: Request, res: Response) => {
 	try {
-		const { appName } = req.session;
+		const { appName, user } = req.session;
 		const logs = await services.logs.findByCursor(
 			{ appName },
 			{
@@ -48,6 +48,9 @@ router.get("/", authMiddleware, async (req: Request, res: Response) => {
 				let levelStyle = getLevelStyle(log.level);
 				return { ...log, id: log._id, levelStyle };
 			}),
+			appName,
+			user: user,
+			maskKey: maskKey(user as string),
 		});
 	} catch (error: any) {
 		return res.send(`<p>${error ? error : "Something went wrong!!!"}`);

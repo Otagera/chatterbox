@@ -96,3 +96,8 @@ export const createLoginToken = (email: string) => {
 
 	return `${apiKey}${checkSum}_ETR`;
 };
+
+export const maskKey = (key: string) => {
+	const spliter = key.split("_");
+	return `${spliter[0]}_XXXXXXXXXXXXX_${spliter[spliter.length - 1]}`;
+};
