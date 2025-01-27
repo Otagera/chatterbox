@@ -8,9 +8,14 @@ import { AppKeyStatus } from "../entities";
 import { HTTPError } from "../utils/error.util";
 import constantsUtil from "../utils/constants.util";
 import { authMiddleware, verifyService } from "../middlewares/auth.middleware";
-import { encrypt, encryptObj } from "../utils/security.util";
+import { encrypt, encryptObj, hashLogintoken } from "../utils/security.util";
 import { validateSpec } from "../utils/validate.util";
-import { OTPService, authorizeService, loginService } from "./services";
+import {
+	OTPService,
+	authorizeService,
+	generateSaveAndSendOTP,
+	loginService,
+} from "./services";
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 const router = Router();
@@ -79,11 +84,74 @@ router.post("/logs/bulk", async (req: Request, res: Response) => {
 
 router.post("/users/login", async (req: Request, res: Response) => {
 	try {
-		const { email } = await loginService(req.body);
+		const { email, existingApps, loginToken } = await loginService(req.body);
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
 			message: `User: ${email} OTP sent successfully`,
+			loginToken,
+			existingApps,
 		});
+	} catch (error) {
+		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
+			success: false,
+			message: `Application has not been authorized successfully`,
+		});
+	}
+});
+
+const sendLoginOTP = async (appName: string, loginToken: string) => {
+	const app = await services.appKeys.findOne({
+		appName: appName as string,
+	});
+	const user = await services.users.findOne({
+		id: app?.user.id,
+		loginToken: hashLogintoken(loginToken as string),
+	});
+	if (user) {
+		await generateSaveAndSendOTP(user);
+
+		return true;
+	}
+	throw new Error("Login failed, please try again");
+};
+
+// Create new app
+router.post("/users/apps", async (req: Request, res: Response) => {
+	try {
+		const { appName, apiSecret } = await authorizeService(req.body);
+
+		return res.status(HTTP_STATUS_CODES.CREATED).json({
+			success: true,
+			message: `Application: ${appName} has been successfully created & authorized`,
+			apiSecret,
+		});
+	} catch (error) {
+		console.log("error", error);
+		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
+			success: false,
+			message: `Application has not been authorized successfully`,
+		});
+	}
+});
+
+// Login to existing app
+router.get("/users/apps", async (req: Request, res: Response) => {
+	try {
+		const { appName, loginToken } = req.query;
+
+		if (appName && loginToken) {
+			const otpSent = await sendLoginOTP(
+				appName as string,
+				loginToken as string
+			);
+			if (otpSent) {
+				return res.status(HTTP_STATUS_CODES.CREATED).json({
+					success: true,
+					message: `OTP for Application: ${appName} has been sent`,
+				});
+			}
+			throw new Error("Existing - Something went wrong!!!");
+		}
 	} catch (error) {
 		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
 			success: false,
