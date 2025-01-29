@@ -163,10 +163,12 @@ router.get("/users/apps", async (req: Request, res: Response) => {
 router.post("/users/otp", async (req: Request, res: Response) => {
 	try {
 		await OTPService(req.body);
+		const { apiSecret } = await authorizeService(req.body);
 
 		return res.status(HTTP_STATUS_CODES.OK).json({
 			success: true,
-			message: `Okay`,
+			message: `OTP success...`,
+			apiSecret,
 		});
 	} catch (error) {
 		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
