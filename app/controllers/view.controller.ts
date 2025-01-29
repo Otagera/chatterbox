@@ -14,6 +14,14 @@ import {
 	loginService,
 } from "./services";
 
+import fs from "fs";
+import path from "path";
+
+const svgPath = path.join(__dirname, "../../../views/assets/copy.svg");
+const svgContent = fs.readFileSync(svgPath, "utf8");
+
+console.log(svgContent);
+
 const router = Router();
 
 const getLevelStyle = (level: string) => {
@@ -377,6 +385,37 @@ router.post("/view/otp", async (req: Request, res: Response) => {
 
 		res.setHeader("HX-Redirect", "/");
 		res.send();
+	} catch (error) {
+		console.log("error", error);
+		return res.send(`
+			<p>Please login again</p>
+			<form hx-post="/view/login" hx-swap="outerHTML" class="mb-3">
+				<input type="email" placeholder="Email" name="email" class="form-control mb-3" />
+				<button type="submit" class="btn btn-primary"> Login </button>
+			</form>
+		`);
+	}
+});
+
+router.get("/view/authorize", async (req: Request, res: Response) => {
+	try {
+		const { email, appName } = req.session;
+		const { apiSecret } = await authorizeService({ email, appName });
+
+		return res.send(`
+		<p> Secret Key: </p>
+		   <span id="apiKey"> ${maskKey(apiSecret)}  </span>
+		   <div 
+					style="
+						width: 20px;
+						height: 20px;
+						padding-left: 10px;
+						cursor:pointer;
+					"
+					id="copyIconContainer">
+		     ${svgContent}
+			</div>
+		`);
 	} catch (error) {
 		console.log("error", error);
 		return res.send(`

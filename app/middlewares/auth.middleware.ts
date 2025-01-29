@@ -93,6 +93,7 @@ export const authMiddleware = async (
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
+		console.log("error", error);
 		if (req.isBrowser) {
 			return res.send(`
         <html>

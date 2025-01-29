@@ -97,6 +97,7 @@ export const authorizeService = async (params: Record<string, any>) => {
 	if (existingAppKey) {
 		const appKeyIsActive =
 			existingAppKey.status === "active" && existingAppKey.expires > Date.now();
+		console.log("appKeyIsActive", appKeyIsActive);
 		if (appKeyIsActive) {
 			throw new HTTPError({
 				statusCode: HTTP_STATUS_CODES.CONFLICT,

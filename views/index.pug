@@ -16,11 +16,12 @@ html(lang='en')
     div(class="d-flex" style="justify-content: space-between")
       h3 #{appName}
       div(class="d-flex" style="justify-content: space-between")
-        p Secret Key: 
-          span(id="apiKey") #{maskKey} 
-          div(hx-trigger="click" style="width: 20px; height: 20px; padding-left: 10px;cursor:pointer;" id="copyIconContainer")
-            include ./assets/copy.svg
-    form(hx-post="/api/view/search" hx-swap="innerHTML" hx-target="#new-log" class="mb-3")
+        button(hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML" class="btn btn-primary") Generate new Secret Key
+        //- p Secret Key: 
+        //-   span(id="apiKey") #{maskKey} 
+        //-   div(hx-trigger="click" style="width: 20px; height: 20px; padding-left: 10px;cursor:pointer;" id="copyIconContainer")
+        //-     include ./assets/copy.svg
+    form(hx-post="/view/search" hx-swap="innerHTML" hx-target="#new-log" class="mb-3")
       input(type="text" placeholder="Level" name="level" class="form-control mb-3" list="levelDatalistOptions")
       datalist(id="levelDatalistOptions")
         option(value="info")
@@ -53,21 +54,25 @@ html(lang='en')
           tr
             td(scope="row") #{log.id}
             td #{log.key}
-            td(hx-get=`/api/view/get-log-data/${log.id}` hx-target="this" role="button")
+            td(hx-get=`/view/get-log-data/${log.id}` hx-target="this" role="button")
               small(class="text-muted") #{log.time}
             td(class=`${log.levelStyle}`) #{log.level}
-    button(class="btn btn-primary" hx-get=`/api/view/get-more-logs` hx-swap="beforeend" hx-target="#new-log") Fetch More
+    button(class="btn btn-primary" hx-get=`/view/get-more-logs` hx-swap="beforeend" hx-target="#new-log") Fetch More
 
     script.
-      const apiKeySpan = document.querySelector("#copyIconContainer");
-      apiKeySpan.onclick = () => {
-        copyToClipboard(JSON.parse(`!{JSON.stringify(user)}`));
-      }
+      document.addEventListener("click", (event) => {
+        const apiKeySpan = event.target.closest("#copyIconContainer");
+
+        if (apiKeySpan) {
+          copyToClipboard(JSON.parse(`!{JSON.stringify(user)}`));
+        }
+      });
+
       const copyToClipboard = (text) => {
-          navigator.clipboard.writeText(text).then(() => {
-              console.log('Text copied to clipboard');
-          }).catch(err => {
-              console.error('Failed to copy text: ', err);
-          });
-      }
+        console.log("text", text)
+        console.log("copy")
+        navigator.clipboard.writeText(text)
+          .then(() => console.log("Text copied to clipboard"))
+          .catch(err => console.error("Failed to copy text:", err));
+      };
   

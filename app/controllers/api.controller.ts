@@ -38,7 +38,7 @@ router.post("/logs", authMiddleware, async (req: Request, res: Response) => {
 		});
 		type specType = z.infer<typeof spec>;
 		const log = validateSpec<specType>(spec, logParam);
-
+		console.log("logParam", logParam);
 		const appKey = await services.appKeys.findOne({ appName: log.appName });
 		if (log.data && appKey?.appName) {
 			if (typeof log.data === "string") {
@@ -47,7 +47,7 @@ router.post("/logs", authMiddleware, async (req: Request, res: Response) => {
 				log.data = encryptObj(log.data, appKey.appName);
 			}
 		}
-
+		console.log("log", log);
 		services.logs.create(log as ILog);
 		await services.em.flush();
 		res
@@ -188,7 +188,6 @@ router.post("/apps/authorize", async (req: Request, res: Response) => {
 			apiSecret,
 		});
 	} catch (error) {
-		console.log("error", error);
 		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
 			success: false,
 			message: `Application has not been authorized successfully`,
