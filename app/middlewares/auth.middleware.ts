@@ -67,7 +67,7 @@ export const authMiddleware = async (
 				apiSecret,
 				appName: appname,
 			});
-
+			console.log("isApiSecretValid", isApiSecretValid);
 			if (isApiSecretValid) {
 				req.body.log.appName = appname;
 				req.appName = appname;
@@ -93,7 +93,6 @@ export const authMiddleware = async (
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
-		console.log("error", error);
 		if (req.isBrowser) {
 			return res.send(`
         <html>

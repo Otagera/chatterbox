@@ -16,11 +16,8 @@ html(lang='en')
     div(class="d-flex" style="justify-content: space-between")
       h3 #{appName}
       div(class="d-flex" style="justify-content: space-between")
-        button(hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML" class="btn btn-primary") Generate new Secret Key
-        //- p Secret Key: 
-        //-   span(id="apiKey") #{maskKey} 
-        //-   div(hx-trigger="click" style="width: 20px; height: 20px; padding-left: 10px;cursor:pointer;" id="copyIconContainer")
-        //-     include ./assets/copy.svg
+        button(hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML" class="btn btn-primary" style="margin-right: 5px") New SecKey
+        button(hx-post=`/view/logout` hx-boost="true" class="btn btn-primary") Logout
     form(hx-post="/view/search" hx-swap="innerHTML" hx-target="#new-log" class="mb-3")
       input(type="text" placeholder="Level" name="level" class="form-control mb-3" list="levelDatalistOptions")
       datalist(id="levelDatalistOptions")
@@ -55,7 +52,7 @@ html(lang='en')
             td(scope="row") #{log.id}
             td #{log.key}
             td(hx-get=`/view/get-log-data/${log.id}` hx-target="this" role="button")
-              small(class="text-muted") #{log.time}
+              small(class="text-muted") #{log.createdAt}
             td(class=`${log.levelStyle}`) #{log.level}
     button(class="btn btn-primary" hx-get=`/view/get-more-logs` hx-swap="beforeend" hx-target="#new-log") Fetch More
 
@@ -69,8 +66,6 @@ html(lang='en')
       });
 
       const copyToClipboard = (text) => {
-        console.log("text", text)
-        console.log("copy")
         navigator.clipboard.writeText(text)
           .then(() => console.log("Text copied to clipboard"))
           .catch(err => console.error("Failed to copy text:", err));
