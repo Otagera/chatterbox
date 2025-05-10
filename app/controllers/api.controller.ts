@@ -20,6 +20,11 @@ import {
 const { HTTP_STATUS_CODES } = constantsUtil;
 const router = Router();
 
+/**
+ * @route POST /logs
+ * @description Creates a single log entry. Requires authentication.
+ * Encrypts log data if an appKey is found.
+ */
 router.post("/logs", authMiddleware, async (req: Request, res: Response) => {
 	try {
 		const logParam = req.body?.log;
@@ -73,6 +78,10 @@ router.post("/logs", authMiddleware, async (req: Request, res: Response) => {
 	}
 });
 
+/**
+ * @route POST /logs/bulk
+ * @description Creates multiple log entries from an array of logs.
+ */
 router.post("/logs/bulk", async (req: Request, res: Response) => {
 	const logs: ILog[] = req.body?.logs;
 	logs.forEach((log) => {
@@ -82,6 +91,11 @@ router.post("/logs/bulk", async (req: Request, res: Response) => {
 	res.status(HTTP_STATUS_CODES.OK).json({ success: true });
 });
 
+/**
+ * @route POST /users/login
+ * @description Initiates user login process by sending an OTP.
+ * Returns a login token and a list of existing applications for the user.
+ */
 router.post("/users/login", async (req: Request, res: Response) => {
 	try {
 		const { email, existingApps, loginToken } = await loginService(req.body);
@@ -99,6 +113,14 @@ router.post("/users/login", async (req: Request, res: Response) => {
 	}
 });
 
+/**
+ * @function sendLoginOTP
+ * @description Finds a user by appName and loginToken, then generates and sends an OTP to the user.
+ * @param {string} appName - The name of the application.
+ * @param {string} loginToken - The user's login token.
+ * @returns {Promise<boolean>} True if OTP was sent successfully.
+ * @throws {Error} If login fails (e.g., user or app not found).
+ */
 const sendLoginOTP = async (appName: string, loginToken: string) => {
 	const app = await services.appKeys.findOne({
 		appName: appName as string,
@@ -115,7 +137,10 @@ const sendLoginOTP = async (appName: string, loginToken: string) => {
 	throw new Error("Login failed, please try again");
 };
 
-// Create new app
+/**
+ * @route POST /users/apps
+ * @description Creates a new application for a user and returns an API secret.
+ */
 router.post("/users/apps", async (req: Request, res: Response) => {
 	try {
 		const { appName, apiSecret } = await authorizeService(req.body);
@@ -134,7 +159,11 @@ router.post("/users/apps", async (req: Request, res: Response) => {
 	}
 });
 
-// Login to existing app
+/**
+ * @route GET /users/apps
+ * @description Sends an OTP for logging into an existing application.
+ * Requires appName and loginToken as query parameters.
+ */
 router.get("/users/apps", async (req: Request, res: Response) => {
 	try {
 		const { appName, loginToken } = req.query;
@@ -160,6 +189,10 @@ router.get("/users/apps", async (req: Request, res: Response) => {
 	}
 });
 
+/**
+ * @route POST /users/otp
+ * @description Verifies the OTP provided by the user and returns an API secret upon success.
+ */
 router.post("/users/otp", async (req: Request, res: Response) => {
 	try {
 		await OTPService(req.body);
@@ -178,6 +211,11 @@ router.post("/users/otp", async (req: Request, res: Response) => {
 	}
 });
 
+/**
+ * @route POST /apps/authorize
+ * @description Authorizes an application and returns an API secret.
+ * Typically used for the initial setup or re-authorization of an application.
+ */
 router.post("/apps/authorize", async (req: Request, res: Response) => {
 	try {
 		const { appName, apiSecret } = await authorizeService(req.body);
@@ -195,6 +233,10 @@ router.post("/apps/authorize", async (req: Request, res: Response) => {
 	}
 });
 
+/**
+ * @route POST /apps/verify
+ * @description Verifies if a provided API secret is valid for an application.
+ */
 router.post("/apps/verify", async (req: Request, res: Response) => {
 	try {
 		const isApiSecretValid = await verifyService(req.body);
@@ -224,6 +266,10 @@ router.post("/apps/verify", async (req: Request, res: Response) => {
 	}
 });
 
+/**
+ * @route POST /apps/revoke
+ * @description Revokes access for an application by disabling its AppKey.
+ */
 router.post("/apps/revoke", async (req: Request, res: Response) => {
 	try {
 		const spec = z
@@ -244,9 +290,11 @@ router.post("/apps/revoke", async (req: Request, res: Response) => {
 		appKey.status = AppKeyStatus.DISABLED;
 		await services.em.flush();
 
-		return res.status(HTTP_STATUS_CODES.NOTFOUND).json({
-			success: false,
-			message: `Application: ${appName} not found`,
+		// Bug: Should likely return a success message here if revocation is successful
+		return res.status(HTTP_STATUS_CODES.OK).json({
+			// Corrected from NOTFOUND
+			success: true, // Corrected
+			message: `Application: ${appName} has been revoked`, // Corrected
 		});
 	} catch (error) {
 		return res.status(HTTP_STATUS_CODES.SERVICE_UNAVAILABLE).json({
