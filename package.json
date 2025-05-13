@@ -15,6 +15,7 @@
 		"@mikro-orm/core": "^6.2.9",
 		"@mikro-orm/mongo-highlighter": "^1.0.0",
 		"@mikro-orm/mongodb": "^6.2.9",
+		"connect-mongo": "^5.1.0",
 		"dotenv": "^16.4.5",
 		"express": "^4.19.2",
 		"express-promise-router": "^4.1.1",

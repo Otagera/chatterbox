@@ -1,0 +1,74 @@
+doctype html
+html(lang='en')
+  head
+    title Chatterbox Dashboard - #{appName}
+    link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/css/bootstrap.min.css')
+    script(src='https://unpkg.com/htmx.org@1.5.0')
+    script(src="https://cdn.jsdelivr.net/npm/chart.js")
+    script(src="https://cdn.jsdelivr.net/npm/@cubejs-client/core/dist/cubejs-client-core.umd.js")
+    style.
+      body {padding: 20px}
+      table {font-family: arial, sans-serif;border-collapse: collapse;width: 100%; font-size:12px;}
+      tr.htmx-swapping td {opacity: 0;transition: opacity 0.5s ease-out;}
+      td, th {border: 1px solid #383737;text-align: left;padding: 8px;}
+      tr:nth-child(even) {background-color: #dddddd;}
+      div#copyIconContainer svg{width: 20px; height: 20px}
+      .chart-container {
+        position: relative;
+        margin: auto;
+        height: 300px; /* Adjust height as needed */
+        width: 90%;   /* Adjust width as needed */
+        margin-bottom: 30px;
+      }
+  body
+    .container.mt-4
+        h1 Chatterbox Dashboard
+        h2 Application: #{appName}
+
+        //- Navigation/Logout (Adapt from your existing layout)
+        .d-flex.justify-content-end.mb-3
+          //- Add New SecKey button if needed
+          a.btn.btn-secondary.me-2(href="/view/authorize") View SecKey
+          form(action="/view/logout", method="POST")
+            button.btn.btn-danger(type="submit") Logout
+
+        hr
+
+        h3 Analytics Overview
+
+        //- Chart Row 1
+        .row.mb-4
+          .col-md-6
+            h4 Log Volume Over Time
+            .chart-container
+              canvas#logVolumeChart
+          .col-md-6
+            h4 Log Level Distribution
+            .chart-container(style="max-width: 350px;") // Pie charts often need less width
+              canvas#logLevelDistributionChart
+
+        //- Chart Row 2
+        .row.mb-4
+          .col-md-6
+            h4 Top Log Keys
+            .chart-container
+              canvas#topKeysChart
+          .col-md-6
+            h4 Error Rate Over Time
+            .chart-container
+              canvas#errorRateChart
+
+        //- Optional: Average Response Time Chart
+        //- .row.mb-4
+        //-   .col-md-6
+        //-     h4 Average Response Time
+        //-     .chart-container
+        //-       canvas#avgTimeChart
+
+        hr
+
+    script.
+      const chartData = !{JSON.stringify(chartData || {})};
+    script(src="/js/analytics.js")
+      
+  

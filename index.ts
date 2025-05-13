@@ -5,6 +5,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { RequestContext } from "@mikro-orm/mongodb";
 import session from "express-session";
+import MongoStore from "connect-mongo";
 
 import { ViewController, APIController } from "./app/controllers";
 import { initORM } from "./app/db";
@@ -35,6 +36,11 @@ export const init = (async () => {
 			resave: true,
 			saveUninitialized: true,
 			cookie: { maxAge: 6000000 },
+			store: MongoStore.create({
+				mongoUrl: `${process.env.DB_URL || "mongodb://127.0.0.1:27017"}/${
+					process.env.DB_NAME || "chatterbox"
+				}`,
+			}),
 		})
 	);
 	app.use((req, res, next) => RequestContext.create(services.em, next));
@@ -63,6 +69,7 @@ export const init = (async () => {
 	app.set("views", path.join(__dirname, "../views"));
 	app.locals.basedir = path.join(__dirname, "views");
 	app.set("view engine", "pug");
+	app.use(express.static(path.join(__dirname, "../views")));
 
 	app.use("/", ViewController);
 	app.use("/api", APIController);
