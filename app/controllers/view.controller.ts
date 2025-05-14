@@ -361,7 +361,6 @@ const aggregateTopKeys = async (
 		},
 		{ $limit: limit },
 	];
-	type label = "Info" | "Warning" | "Error" | "Debug";
 	type LogAggregatorType = {
 		logVolume: number;
 		key: string;
@@ -383,6 +382,8 @@ const aggregateTopKeys = async (
 			{
 				label: "Top Log Keys",
 				data,
+				axis: "y",
+				fill: false,
 				backgroundColor: "rgba(75, 192, 192, 0.7)",
 				borderColor: "rgba(75, 192, 192, 1)",
 				borderWidth: 1,
@@ -476,8 +477,10 @@ const aggregateErrorRate = async (appName: string, days: number) => {
 			{
 				label: "Error Rate (%)",
 				data,
+				backgroundColor: "rgba(255, 99, 132, 0.5)",
 				borderColor: "rgb(255, 99, 132)",
 				tension: 0.1,
+				borderWidth: 1,
 			},
 		],
 	};

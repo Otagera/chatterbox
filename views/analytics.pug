@@ -20,6 +20,10 @@ html(lang='en')
         width: 90%;   /* Adjust width as needed */
         margin-bottom: 30px;
       }
+      #topKeysChart {
+        height: 400px;
+        width: 600px;
+      }
   body
     .container.mt-4
         h1 Chatterbox Dashboard
@@ -44,7 +48,7 @@ html(lang='en')
               canvas#logVolumeChart
           .col-md-6
             h4 Log Level Distribution
-            .chart-container(style="max-width: 350px;") // Pie charts often need less width
+            .chart-container(style="max-width: 350px;")
               canvas#logLevelDistributionChart
 
         //- Chart Row 2
