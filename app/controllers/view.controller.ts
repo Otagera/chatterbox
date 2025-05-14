@@ -58,186 +58,140 @@ const getRecentLogs = async (appName: string, limit = 100) => {
 	});
 };
 
-const aggregateLogVolume = async (appName: string, days: number) => {
+type LogLevelConfigItem = {
+	label: "Info" | "Warning" | "Error" | "Debug" | "Trace";
+	color: string;
+};
+
+const LOG_LEVEL_CONFIG: Record<string, LogLevelConfigItem> = {
+	info: { label: "Info", color: "rgba(54, 162, 235, 0.7)" },
+	warning: { label: "Warning", color: "rgba(255, 159, 64, 0.7)" },
+	error: { label: "Error", color: "rgba(255, 99, 132, 0.7)" },
+	debug: { label: "Debug", color: "rgba(75, 192, 192, 0.7)" },
+	trace: { label: "Trace", color: "rgba(100, 100, 255, 0.7)" },
+	// Add other levels if needed
+};
+
+const KNOWN_LEVEL_KEYS = Object.keys(LOG_LEVEL_CONFIG);
+
+type LevelKey = keyof typeof LOG_LEVEL_CONFIG; // "info" | "warning" | ...
+
+type LogVolumeAggregate = {
+	day: Date;
+	level: LevelKey;
+	logVolume: number;
+};
+
+type ChartDataset = {
+	label: LogLevelConfigItem["label"] | string; // Allow specific level labels or general labels like "Error Rate (%)"
+	data: number[];
+	backgroundColor?: string | string[];
+	borderColor?: string;
+	tension?: number;
+	borderWidth?: number;
+	axis?: "x" | "y"; // For bar charts if needed
+	fill?: boolean; // For line charts if needed
+	hoverOffset?: number;
+};
+
+type ChartData = {
+	labels: string[];
+	datasets: ChartDataset[];
+};
+
+/**
+ * Aggregates log volume per level per day for a given appName and number of past days.
+ * Optimized for creating stacked bar/area charts or multi-line charts.
+ * @param appName The name of the application.
+ * @param days The number of past days to include in the aggregation.
+ * @returns ChartData object with labels (dates) and datasets (one per log level).
+ */
+export const aggregateLogVolume = async (
+	appName: string,
+	days: number
+): Promise<ChartData> => {
 	const startDate = new Date();
 	startDate.setDate(startDate.getDate() - days);
-	// Optional: Set time to the beginning of that day if needed
-	// startDate.setHours(0, 0, 0, 0);
+	startDate.setHours(0, 0, 0, 0);
 
 	const pipeline = [
 		{
 			$match: {
-				createdAt: {
-					$gte: startDate, // $gte selects documents where createdAt is greater than or equal to startDate
-					// You could add an $lt: new Date() if you want to exclude future dates,
-					// but usually not necessary if data ingestion is correct.
-				},
+				createdAt: { $gte: startDate },
 				appName,
 			},
 		},
 		{
 			$group: {
 				_id: {
-					// Compound group key
 					level: "$level",
-					day: {
-						// Extract the date part (YYYY-MM-DD) from createdAt
-						// $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
-						// Alternative using $dateTrunc (MongoDB 5.0+)
-						$dateTrunc: { date: "$createdAt", unit: "day" },
-					},
+					day: { $dateTrunc: { date: "$createdAt", unit: "day" } },
 				},
-				logVolume: { $count: {} }, // Accumulator: count documents in each group
+				logVolume: { $count: {} },
 			},
 		},
 		{
-			// Rename _id field to level for better readability
 			$project: {
-				_id: 0, // Exclude the default _id field
-				day: "$_id.day", // Extract day from the compound _id
-				level: "$_id.level", // Extract level from the compound _id
-				logVolume: 1, // Include the calculated logVolume
+				_id: 0,
+				day: "$_id.day",
+				level: "$_id.level",
+				logVolume: 1,
 			},
 		},
 		{
+			// Sort by day first, then by level to ensure consistent processing order
+			// though the later processing logic handles unsorted data too.
 			$sort: {
 				day: 1,
 				level: 1,
 			},
 		},
 	];
-	type label = "Info" | "Warning" | "Error" | "Debug";
-	type LogAggregatorType = {
-		logVolume: number;
-		day: Date;
-		level: "info" | "warning" | "error" | "debug";
-	};
-	type DatasetType = {
-		label: label;
-		data: number[];
-		backgroundColor: string;
-	};
-	const logAggregates: LogAggregatorType[] = await services.orm.em.aggregate(
+
+	const logAggregates: LogVolumeAggregate[] = await services.orm.em.aggregate(
 		Log,
 		pipeline
 	);
-	const dateLabels: string[] = [];
-	const infoDataset: DatasetType = {
-		label: "Info",
-		data: [],
-		backgroundColor: "rgba(54, 162, 235, 0.7)",
-	};
-	const warningDataset: DatasetType = {
-		label: "Warning",
-		data: [],
-		backgroundColor: "rgba(255, 159, 64, 0.7)",
-	};
-	const errorDataset: DatasetType = {
-		label: "Error",
-		data: [],
-		backgroundColor: "rgba(255, 99, 132, 0.7)",
-	};
-	const debugDataset: DatasetType = {
-		label: "Debug",
-		data: [],
-		backgroundColor: "rgba(75, 192, 192, 0.7)",
-	};
-	const obj: Record<
-		string,
-		{ info: number; warning: number; error: number; debug: number }
-	> = {};
-	logAggregates.forEach((log) => {
-		const date = log.day.toISOString().split("T")[0];
-		const getLabels = () => {
-			switch (log.level) {
-				case "info":
-					return {
-						info: log.logVolume,
-						warning: 0,
-						error: 0,
-						debug: 0,
-					};
-				case "warning":
-					return {
-						info: 0,
-						warning: log.logVolume,
-						error: 0,
-						debug: 0,
-					};
-				case "error":
-					return {
-						info: 0,
-						warning: 0,
-						error: log.logVolume,
-						debug: 0,
-					};
-				case "debug":
-					return {
-						info: 0,
-						warning: 0,
-						error: 0,
-						debug: log.logVolume,
-					};
-				default:
-					return {
-						info: 0,
-						warning: 0,
-						error: 0,
-						debug: 0,
-					};
-			}
-		};
-		if (obj[date]) {
-			switch (log.level) {
-				case "info":
-					obj[date].info = log.logVolume;
-					obj[date].warning = obj[date].warning ? obj[date].warning : 0;
-					obj[date].error = obj[date].error ? obj[date].error : 0;
-					obj[date].debug = obj[date].debug ? obj[date].debug : 0;
-					break;
-				case "warning":
-					obj[date].info = obj[date].info ? obj[date].info : 0;
-					obj[date].warning = log.logVolume;
-					obj[date].error = obj[date].error ? obj[date].error : 0;
-					obj[date].debug = obj[date].debug ? obj[date].debug : 0;
-					break;
-				case "error":
-					obj[date].info = obj[date].info ? obj[date].info : 0;
-					obj[date].warning = obj[date].warning ? obj[date].warning : 0;
-					obj[date].error = log.logVolume;
-					obj[date].debug = obj[date].debug ? obj[date].debug : 0;
-					break;
-				case "debug":
-					obj[date].info = obj[date].info ? obj[date].info : 0;
-					obj[date].warning = obj[date].warning ? obj[date].warning : 0;
-					obj[date].error = obj[date].error ? obj[date].error : 0;
-					obj[date].debug = log.logVolume;
-					break;
-				default:
-					obj[date].info = 0;
-					obj[date].warning = 0;
-					obj[date].error = 0;
-					obj[date].debug = 0;
-					break;
-			}
-		} else {
-			obj[date] = getLabels();
-			dateLabels.push(date);
+
+	// Key: YYYY-MM-DD date string
+	// Value: Record<LevelKey, number> (e.g., { info: 10, error: 2 })
+	const dailyLevelCounts = new Map<string, Record<LevelKey, number>>();
+
+	// Populate dailyLevelCounts, ensuring all known levels are initialized for each day
+	logAggregates.forEach((agg) => {
+		const dateStr = agg.day.toISOString().split("T")[0];
+		if (!dailyLevelCounts.has(dateStr)) {
+			const initialCounts = {} as Record<LevelKey, number>;
+			KNOWN_LEVEL_KEYS.forEach((levelKey) => {
+				initialCounts[levelKey as LevelKey] = 0;
+			});
+			dailyLevelCounts.set(dateStr, initialCounts);
+		}
+		// Ensure the level from DB is one of the known keys before assigning
+		if (KNOWN_LEVEL_KEYS.includes(agg.level)) {
+			dailyLevelCounts.get(dateStr)![agg.level] = agg.logVolume;
 		}
 	});
-	Object.keys(obj).forEach((key) => {
-		infoDataset.data.push(obj[key].info);
-		warningDataset.data.push(obj[key].warning);
-		errorDataset.data.push(obj[key].error);
-		debugDataset.data.push(obj[key].debug);
-	});
 
-	const datasets: DatasetType[] = [
-		infoDataset,
-		warningDataset,
-		errorDataset,
-		debugDataset,
-	];
+	// Get sorted unique date labels
+	const dateLabels = Array.from(dailyLevelCounts.keys()).sort();
+
+	const datasets: ChartDataset[] = [];
+
+	// Create a dataset for each known log level
+	KNOWN_LEVEL_KEYS.forEach((levelKey) => {
+		const config = LOG_LEVEL_CONFIG[levelKey as LevelKey];
+		if (config) {
+			datasets.push({
+				label: config.label,
+				data: dateLabels.map(
+					(dateStr) =>
+						dailyLevelCounts.get(dateStr)?.[levelKey as LevelKey] || 0
+				),
+				backgroundColor: config.color,
+			});
+		}
+	});
 
 	return {
 		labels: dateLabels,
@@ -245,16 +199,25 @@ const aggregateLogVolume = async (appName: string, days: number) => {
 	};
 };
 
-const aggregateLogLevels = async (appName: string, days: number) => {
+/**
+ * Aggregates total log volume per level for a given appName and number of past days.
+ * Optimized for pie or doughnut charts.
+ * @param appName The name of the application.
+ * @param days The number of past days to include in the aggregation.
+ * @returns ChartData object with labels (log levels) and one dataset.
+ */
+export const aggregateLogLevels = async (
+	appName: string,
+	days: number
+): Promise<ChartData> => {
 	const startDate = new Date();
 	startDate.setDate(startDate.getDate() - days);
+	startDate.setHours(0, 0, 0, 0);
 
 	const pipeline = [
 		{
 			$match: {
-				createdAt: {
-					$gte: startDate,
-				},
+				createdAt: { $gte: startDate },
 				appName,
 			},
 		},
@@ -272,72 +235,76 @@ const aggregateLogLevels = async (appName: string, days: number) => {
 			},
 		},
 		{
-			$sort: {
-				level: 1,
-			},
+			$sort: { level: 1 },
 		},
 	];
-	type label = "Info" | "Warning" | "Error" | "Debug";
-	type LogAggregatorType = {
+
+	type LogLevelAggregate = {
+		level: LevelKey;
 		logVolume: number;
-		level: "info" | "warning" | "error" | "debug";
 	};
-	const logAggregates: LogAggregatorType[] = await services.orm.em.aggregate(
+
+	const logAggregates: LogLevelAggregate[] = await services.orm.em.aggregate(
 		Log,
 		pipeline
 	);
-	const labelsColor = {
-		Info: "rgba(54, 162, 235, 0.7)",
-		Warning: "rgba(255, 159, 64, 0.7)",
-		Error: "rgba(255, 99, 132, 0.7)",
-		Debug: "rgba(75, 192, 192, 0.7)",
-	};
-	const labels = Object.keys(labelsColor);
 
-	const datasets = [
-		{
-			label: "Log Levels",
-			data: new Array(labels.length).fill(0),
-			backgroundColor: [
-				"rgba(54, 162, 235, 0.7)",
-				"rgba(255, 159, 64, 0.7)",
-				"rgba(255, 99, 132, 0.7)",
-				"rgba(75, 192, 192, 0.7)",
-			],
-			hoverOffset: 4,
-		},
-	];
-	const capitalizeFirstLetter = (str: string) => {
-		if (!str) {
-			return "";
+	const chartLabels: LogLevelConfigItem["label"][] = [];
+	const chartDataValues: number[] = [];
+	const backgroundColors: string[] = [];
+
+	const levelDataMap = new Map<LevelKey, number>();
+	logAggregates.forEach((agg) => {
+		if (KNOWN_LEVEL_KEYS.includes(agg.level)) {
+			levelDataMap.set(agg.level, agg.logVolume);
 		}
-		return str.charAt(0).toUpperCase() + str.slice(1);
-	};
-	logAggregates.forEach((log) => {
-		const index = labels.indexOf(capitalizeFirstLetter(log.level));
-		datasets[0].data[index] = log.logVolume;
+	});
+
+	KNOWN_LEVEL_KEYS.forEach((levelKey) => {
+		const config = LOG_LEVEL_CONFIG[levelKey as LevelKey];
+		const volume = levelDataMap.get(levelKey as LevelKey) || 0;
+
+		// Only add to chart if there's data or you want to show all levels
+		if (volume > 0) {
+			chartLabels.push(config.label);
+			chartDataValues.push(volume);
+			backgroundColors.push(config.color);
+		}
 	});
 
 	return {
-		labels,
-		datasets,
+		labels: chartLabels,
+		datasets: [
+			{
+				label: "Log Levels",
+				data: chartDataValues,
+				backgroundColor: backgroundColors,
+				hoverOffset: 4,
+			},
+		],
 	};
 };
 
-const aggregateTopKeys = async (
+/**
+ * Aggregates top log keys by volume for a given appName, number of past days, and limit.
+ * @param appName The name of the application.
+ * @param days The number of past days to include.
+ * @param limit The maximum number of top keys to return.
+ * @returns ChartData object for a bar chart.
+ */
+export const aggregateTopKeys = async (
 	appName: string,
 	days: number,
 	limit: number
-) => {
+): Promise<ChartData> => {
 	const startDate = new Date();
 	startDate.setDate(startDate.getDate() - days);
+	startDate.setHours(0, 0, 0, 0);
 
 	const pipeline = [
 		{
 			$match: {
-				createdAt: {
-					$gte: startDate,
-				},
+				createdAt: { $gte: startDate },
 				appName,
 			},
 		},
@@ -354,36 +321,28 @@ const aggregateTopKeys = async (
 				logVolume: 1,
 			},
 		},
-		{
-			$sort: {
-				logVolume: -1,
-			},
-		},
+		{ $sort: { logVolume: -1 } },
 		{ $limit: limit },
 	];
-	type LogAggregatorType = {
-		logVolume: number;
+
+	type TopKeyAggregate = {
 		key: string;
+		logVolume: number;
 	};
-	const logAggregates: LogAggregatorType[] = await services.orm.em.aggregate(
+
+	const logAggregates: TopKeyAggregate[] = await services.orm.em.aggregate(
 		Log,
 		pipeline
 	);
 
-	const labels: string[] = [];
-	const data: number[] = [];
-	logAggregates.forEach((log) => {
-		labels.push(log.key);
-		data.push(log.logVolume);
-	});
 	return {
-		labels: labels,
+		labels: logAggregates.map((agg) => agg.key),
 		datasets: [
 			{
 				label: "Top Log Keys",
-				data,
+				data: logAggregates.map((agg) => agg.logVolume),
+				// Horizontal bar chart
 				axis: "y",
-				fill: false,
 				backgroundColor: "rgba(75, 192, 192, 0.7)",
 				borderColor: "rgba(75, 192, 192, 1)",
 				borderWidth: 1,
@@ -392,53 +351,42 @@ const aggregateTopKeys = async (
 	};
 };
 
-const aggregateErrorRate = async (appName: string, days: number) => {
+/**
+ * Aggregates error rate per day for a given appName and number of past days.
+ * @param appName The name of the application.
+ * @param days The number of past days to include.
+ * @returns ChartData object for a line chart.
+ */
+export const aggregateErrorRate = async (
+	appName: string,
+	days: number
+): Promise<ChartData> => {
 	const startDate = new Date();
 	startDate.setDate(startDate.getDate() - days);
+	startDate.setHours(0, 0, 0, 0);
 
 	const pipeline = [
 		{
-			// Stage 1: Filter documents by date range and appName
 			$match: {
-				createdAt: {
-					$gte: startDate, // Logs created on or after the start date
-				},
-				appName: appName, // Filter by the specific application name
+				createdAt: { $gte: startDate },
+				appName: appName,
 			},
 		},
 		{
-			// Stage 2: Group documents by day
 			$group: {
-				_id: {
-					// Group by the day part of 'createdAt'
-					// Using $dateTrunc to keep it as a Date object (MongoDB 5.0+)
-					// For older versions, you might use $dateToString as in previous examples
-					day: { $dateTrunc: { date: "$createdAt", unit: "day" } },
-				},
-				// Calculate total logs for the day
+				_id: { day: { $dateTrunc: { date: "$createdAt", unit: "day" } } },
 				totalLogs: { $sum: 1 },
-				// Calculate error logs for the day
-				errorLogs: {
-					$sum: {
-						// $cond: if 'level' is 'error', then 1, else 0
-						$cond: [{ $eq: ["$level", "error"] }, 1, 0],
-					},
-				},
+				errorLogs: { $sum: { $cond: [{ $eq: ["$level", "error"] }, 1, 0] } },
 			},
 		},
 		{
-			// Stage 3: Calculate the error rate and reshape the output
 			$project: {
-				_id: 0, // Exclude the default _id field
-				day: "$_id.day", // The day
-				totalLogs: 1, // Include total logs (optional, for context)
-				errorLogs: 1, // Include error logs (optional, for context)
+				_id: 0,
+				day: "$_id.day",
 				errorRate: {
-					// Calculate (errorLogs / totalLogs) * 100
-					// Handle division by zero: if totalLogs is 0, errorRate is 0
 					$cond: {
-						if: { $eq: ["$totalLogs", 0] }, // Check if totalLogs is 0
-						then: 0, // If 0, error rate is 0
+						if: { $eq: ["$totalLogs", 0] },
+						then: 0,
 						else: {
 							$multiply: [{ $divide: ["$errorLogs", "$totalLogs"] }, 100],
 						},
@@ -446,41 +394,30 @@ const aggregateErrorRate = async (appName: string, days: number) => {
 				},
 			},
 		},
-		{
-			// Stage 4: Sort the results by day
-			$sort: {
-				day: 1, // Sort by day ascending
-			},
-		},
+		{ $sort: { day: 1 } },
 	];
-	type LogAggregatorType = {
-		logVolume: number;
-		errorLogs: number;
+
+	type ErrorRateAggregate = {
 		day: Date;
 		errorRate: number;
 	};
-	const logAggregates: LogAggregatorType[] = await services.orm.em.aggregate(
+
+	const logAggregates: ErrorRateAggregate[] = await services.orm.em.aggregate(
 		Log,
 		pipeline
 	);
-	const labels: string[] = [];
-	const data: number[] = [];
-	logAggregates.forEach((log) => {
-		const date = log.day.toISOString().split("T")[0];
-		labels.push(date);
-		data.push(log.errorRate);
-	});
 
 	return {
-		labels,
+		labels: logAggregates.map((agg) => agg.day.toISOString().split("T")[0]),
 		datasets: [
 			{
 				label: "Error Rate (%)",
-				data,
+				data: logAggregates.map((agg) => parseFloat(agg.errorRate.toFixed(2))),
 				backgroundColor: "rgba(255, 99, 132, 0.5)",
 				borderColor: "rgb(255, 99, 132)",
 				tension: 0.1,
 				borderWidth: 1,
+				fill: true,
 			},
 		],
 	};
