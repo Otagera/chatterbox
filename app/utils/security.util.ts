@@ -90,6 +90,13 @@ export const createSecretKey = (appName: string) => {
 	return `chbxsk_${apiKey}${checkSum}_ZEE`;
 };
 
+export const createToken = (appName: string) => {
+	const checkSum = createChecksum(appName);
+	const apiKey = crypto.randomBytes(24).toString("base64url");
+
+	return `chbxtkn_${apiKey}${checkSum}_ZEE`;
+};
+
 export const createLoginToken = (email: string) => {
 	const checkSum = createChecksum(email);
 	const apiKey = crypto.randomBytes(24).toString("base64url");

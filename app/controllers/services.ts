@@ -3,6 +3,7 @@ import { validateSpec } from "../utils/validate.util";
 import {
 	createLoginToken,
 	createSecretKey,
+	createToken,
 	generateOTP,
 	hashKeys,
 	hashLogintoken,
@@ -73,6 +74,40 @@ export const OTPService = async (params: Record<string, any>) => {
 	}
 };
 
+export const createApplication = async (params: Record<string, any>) => {
+	const spec = z
+		.object({
+			email: z.string().email(),
+			appName: z.string(),
+			expires: z.coerce.number().int().min(1).default(10),
+		})
+		.required();
+	type specType = z.infer<typeof spec>;
+	const { email, appName, expires } = validateSpec<specType>(spec, params);
+
+	const user = await services.users.findOne({ email });
+	if (!user) {
+		throw new NotFoundError({ message: `User: ${email} not found` });
+	}
+	const expiresinMiliSecs = Date.now() + expires * 1000;
+	const token = createToken(appName);
+	const apiSecret = createSecretKey(appName);
+	const hashedToken = hashKeys(token);
+	const hashedApiSecret = hashKeys(apiSecret);
+	let appKey = new AppKey(
+		appName,
+		hashedToken,
+		hashedApiSecret,
+		expiresinMiliSecs,
+		AppKeyStatus.ACTIVE,
+		user
+	);
+
+	services.appKeys.create(appKey as IAppKey);
+	services.em.persist(appKey);
+	return { appName, token, apiSecret, email };
+};
+
 export const authorizeService = async (params: Record<string, any>) => {
 	const spec = z
 		.object({
@@ -84,9 +119,8 @@ export const authorizeService = async (params: Record<string, any>) => {
 	type specType = z.infer<typeof spec>;
 	const { email, appName, expires } = validateSpec<specType>(spec, params);
 
-	const expiresinMiliSecs = Date.now() + expires * 1000;
-	const apiSecret = createSecretKey(appName);
-	const hashedApiSecret = hashKeys(apiSecret);
+	const token = createToken(appName);
+	const hashedToken = hashKeys(token);
 	const user = await services.users.findOne({ email });
 
 	if (!user) {
@@ -105,20 +139,55 @@ export const authorizeService = async (params: Record<string, any>) => {
 			});
 		}
 
-		existingAppKey.apiSecret = hashedApiSecret;
+		existingAppKey.token = hashedToken;
 		existingAppKey.expires = Date.now() + expires * 1000;
 	} else {
-		let appKey = new AppKey(
-			appName,
-			hashedApiSecret,
-			expiresinMiliSecs,
-			AppKeyStatus.ACTIVE,
-			user
-		);
-
-		services.appKeys.create(appKey as IAppKey);
-		services.em.persist(appKey);
+		await createApplication({ email, appName, expires });
 	}
+	await services.em.flush();
+
+	return { appName, token, email };
+};
+
+export const apiAuthorizeService = async (params: Record<string, any>) => {
+	const spec = z
+		.object({
+			email: z.string().email(),
+			appName: z.string(),
+			expires: z.coerce.number().int().min(1).default(10),
+		})
+		.required();
+	type specType = z.infer<typeof spec>;
+	const { email, appName, expires } = validateSpec<specType>(spec, params);
+
+	const apiSecret = createSecretKey(appName);
+	const hashedApiSecret = hashKeys(apiSecret);
+	const user = await services.users.findOne({ email });
+
+	if (!user) {
+		throw new NotFoundError({ message: `User: ${email} not found.` });
+	}
+	const existingAppKey = await services.appKeys.findOne({ appName, user });
+
+	if (!existingAppKey) {
+		throw new HTTPError({
+			statusCode: HTTP_STATUS_CODES.CONFLICT,
+			message: `Application: ${appName} doesn't exist.`,
+		});
+	}
+	const appKeyIsActive =
+		existingAppKey.status === "active" && existingAppKey.expires > Date.now();
+
+	if (appKeyIsActive) {
+		throw new HTTPError({
+			statusCode: HTTP_STATUS_CODES.CONFLICT,
+			message: `Application: ${appName} has already been authorized.`,
+		});
+	}
+
+	existingAppKey.apiSecret = hashedApiSecret;
+	existingAppKey.expires = Date.now() + expires * 1000;
+
 	await services.em.flush();
 
 	return { appName, apiSecret, email };

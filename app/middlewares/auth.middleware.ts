@@ -16,6 +16,38 @@ const { HTTP_STATUS_CODES } = constantsUtil;
 
 export const verifyService = async (params: {
 	appName?: string;
+	token?: string;
+}) => {
+	const spec = z
+		.object({
+			appName: z.string(),
+			token: z.string(),
+		})
+		.required();
+	type specType = z.infer<typeof spec>;
+	const { appName, token } = validateSpec<specType>(spec, params);
+
+	// Extract the appName and the public/private key data from the apiKey and token
+	const [typeApiSecret, _privateKeyHashWithChecksum] = token.split("_");
+
+	if (typeApiSecret !== "chbxtkn") {
+		throw new InvalidKeyError({});
+	}
+
+	const appKey = await services.appKeys.findOne({ appName });
+	if (!appKey) {
+		throw new AppNotFoundError({
+			message: `Application: ${appName} not found`,
+		});
+	}
+
+	const recomputedPrivateKey = appKey.token;
+
+	// Check if the recomputed hashes match the original API key and secret
+	return hashKeys(token) === recomputedPrivateKey;
+};
+export const apiVerifyService = async (params: {
+	appName?: string;
 	apiSecret?: string;
 }) => {
 	const spec = z
@@ -53,37 +85,17 @@ export const authMiddleware = async (
 	res: Response,
 	next: NextFunction
 ) => {
-	const { authorization: token, appname } = req.headers;
 	const { user, appName } = req.session;
 	try {
-		if (token) {
-			let apiSecret = "";
-			if (token && token.startsWith("Bearer ")) {
-				apiSecret = token.split(" ")[1];
-			} else if (user) {
-				apiSecret = user;
-			}
-			const isApiSecretValid = await verifyService({
-				apiSecret,
-				appName: appname,
-			});
-			console.log("isApiSecretValid", isApiSecretValid);
-			if (isApiSecretValid) {
-				req.body.log.appName = appname;
-				req.appName = appname;
-				return next();
-			}
+		if (user) {
+			let token = user;
 
-			throw new HTTPError({});
-		} else if (user) {
-			let apiSecret = user;
-
-			const isApiSecretValid = await verifyService({
-				apiSecret,
+			const isTokenValid = await verifyService({
+				token,
 				appName,
 			});
 
-			if (isApiSecretValid) {
+			if (isTokenValid) {
 				req.appName = appName;
 				return next();
 			}
@@ -93,8 +105,7 @@ export const authMiddleware = async (
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
-		if (req.isBrowser) {
-			return res.send(`
+		return res.send(`
         <html>
           <head>
             <title>Redirecting...</title>
@@ -110,18 +121,46 @@ export const authMiddleware = async (
           </body>
         </html>
       `);
-		} else {
-			if (error instanceof HTTPError) {
-				return res.status(error?.statusCode).json({
-					status: "error",
-					message: error?.message,
-				});
-			} else {
-				return res.status(HTTP_STATUS_CODES.UNAUTHORIZED).json({
-					status: "error",
-					message: "Unauthorized request, please provide a valid secret key.",
-				});
+	}
+};
+export const apiAuthMiddleware = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const { authorization: token, appname } = req.headers;
+	try {
+		if (token) {
+			let apiSecret = "";
+			if (token && token.startsWith("Bearer ")) {
+				apiSecret = token.split(" ")[1];
 			}
+			const isApiSecretValid = await apiVerifyService({
+				apiSecret,
+				appName: appname,
+			});
+
+			if (isApiSecretValid) {
+				req.body.log.appName = appname;
+				req.appName = appname;
+				return next();
+			}
+
+			throw new HTTPError({});
+		} else {
+			throw new OperationError({ message: "Unauthorized request." });
+		}
+	} catch (error) {
+		if (error instanceof HTTPError) {
+			return res.status(error?.statusCode).json({
+				status: "error",
+				message: error?.message,
+			});
+		} else {
+			return res.status(HTTP_STATUS_CODES.UNAUTHORIZED).json({
+				status: "error",
+				message: "Unauthorized request, please provide a valid secret key.",
+			});
 		}
 	}
 };

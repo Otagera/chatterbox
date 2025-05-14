@@ -18,8 +18,7 @@ html(lang='en')
 
         .d-flex.justify-content-end.mb-3
           a.btn.btn-primary.me-2(href="/analytics" style="color: white; text-decoration: none;") Analytics
-          //-   button(hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML" class="btn btn-primary" style="margin-right: 5px") New SecKey
-          a.btn.btn-secondary.me-2(href="/view/authorize") View SecKey
+          a.btn.btn-secondary.me-2(href="/view/authorize" hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML"  style="margin-right: 5px") New SecKey
           button.btn.btn-danger(hx-post=`/view/logout` hx-boost="true") Logout
 
         hr

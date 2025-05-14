@@ -9,7 +9,9 @@ import { AppKey, Log } from "../entities";
 import { decryptObj, hashLogintoken, maskKey } from "../utils/security.util";
 import {
 	OTPService,
+	apiAuthorizeService,
 	authorizeService,
+	createApplication,
 	generateSaveAndSendOTP,
 	loginService,
 } from "./services";
@@ -833,7 +835,12 @@ router.post("/view/login", async (req: Request, res: Response) => {
 		return res.send(appsHTML);
 	} catch (error: any) {
 		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
+			return res.send(`
+			<form class="mb-3" hx-post="/view/login" hx-swap="outerHTML"><input class="form-control mb-3" type="email" placeholder="Email" name="email">
+				<button class="btn btn-primary" type="submit">Login</button>
+			</form>
+			<p>${error.errors[0].message}</p>
+			`);
 		} else if (error && error.message) {
 			return res.send(`<p>${error.message}</p>`);
 		} else {
@@ -899,12 +906,13 @@ const getViewApps = async (
 		await generateSaveAndSendOTP(user);
 
 		const logHTML = `
-    <form hx-post="/view/otp?appName=${appName}" hx-boost="true">
+    <form hx-post="/view/otp?appName=${appName}" hx-boost="true" hx-swap="innerHTML" hx-target="#otpErrorMsg">
       <h3>${user.email}</h3>
       <input type="email" placeholder="Email" name="email" class="d-none form-control mb-3" value="${user.email}"/>
       <input type="number" placeholder="OTP" name="otp" class="form-control mb-3" />
       <button type="submit" class="btn btn-primary"> Login </button>
     </form>
+		<p id="otpErrorMsg"></p>
   `;
 		return logHTML;
 	}
@@ -980,7 +988,7 @@ router.post("/view/apps", async (req: Request, res: Response) => {
 		const { loginToken } = req.query;
 		if (!loginToken) throw new Error("Login token is required.");
 
-		const { appName } = await authorizeService(req.body);
+		const { appName } = await createApplication(req.body);
 
 		const appsHTML = await getViewApps(appName as string, loginToken as string);
 		return res.send(appsHTML);
@@ -1166,12 +1174,12 @@ router.post("/view/otp", async (req: Request, res: Response) => {
 		}
 		await OTPService({ ...req.body, email: req.session.email });
 
-		const { appName, apiSecret } = await authorizeService({
+		const { appName, token } = await authorizeService({
 			email: req.session.email,
 			appName: req.query.appName as string,
 		});
 
-		req.session.user = apiSecret;
+		req.session.user = token;
 		req.session.appName = appName;
 
 		res.setHeader("HX-Redirect", "/");
@@ -1182,12 +1190,8 @@ router.post("/view/otp", async (req: Request, res: Response) => {
 			errorMessage = error.message;
 		}
 		return res.send(`
-      <p>${errorMessage}</p>
-      <form hx-post="/view/login" hx-swap="outerHTML" class="mb-3">
-        <input type="email" placeholder="Email" name="email" class="form-control mb-3" />
-        <button type="submit" class="btn btn-primary"> Login </button>
-      </form>
-    `);
+			${errorMessage}
+		`);
 	}
 });
 
@@ -1206,8 +1210,8 @@ router.get("/view/authorize", async (req: Request, res: Response) => {
 		if (!email || !appName) {
 			throw new Error("User session not found or app not selected.");
 		}
-		const { apiSecret } = await authorizeService({ email, appName });
-
+		const { apiSecret } = await apiAuthorizeService({ email, appName });
+		req.session.user = apiSecret;
 		return res.send(`
 			<p> Secret Key: </p>
        <span id="apiKey"> ${maskKey(apiSecret)}  </span>

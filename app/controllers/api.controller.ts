@@ -7,12 +7,18 @@ import { ILog } from "../interfaces";
 import { AppKeyStatus } from "../entities";
 import { HTTPError } from "../utils/error.util";
 import constantsUtil from "../utils/constants.util";
-import { authMiddleware, verifyService } from "../middlewares/auth.middleware";
+import {
+	apiAuthMiddleware,
+	authMiddleware,
+	verifyService,
+} from "../middlewares/auth.middleware";
 import { encrypt, encryptObj, hashLogintoken } from "../utils/security.util";
 import { validateSpec } from "../utils/validate.util";
 import {
 	OTPService,
+	apiAuthorizeService,
 	authorizeService,
+	createApplication,
 	generateSaveAndSendOTP,
 	loginService,
 } from "./services";
@@ -25,7 +31,7 @@ const router = Router();
  * @description Creates a single log entry. Requires authentication.
  * Encrypts log data if an appKey is found.
  */
-router.post("/logs", authMiddleware, async (req: Request, res: Response) => {
+router.post("/logs", apiAuthMiddleware, async (req: Request, res: Response) => {
 	try {
 		const logParam = req.body?.log;
 		const spec = z.object({
@@ -143,7 +149,7 @@ const sendLoginOTP = async (appName: string, loginToken: string) => {
  */
 router.post("/users/apps", async (req: Request, res: Response) => {
 	try {
-		const { appName, apiSecret } = await authorizeService(req.body);
+		const { appName, apiSecret } = await createApplication(req.body);
 
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
@@ -151,7 +157,6 @@ router.post("/users/apps", async (req: Request, res: Response) => {
 			apiSecret,
 		});
 	} catch (error) {
-		console.log("error", error);
 		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
 			success: false,
 			message: `Application has not been authorized successfully`,
@@ -196,7 +201,7 @@ router.get("/users/apps", async (req: Request, res: Response) => {
 router.post("/users/otp", async (req: Request, res: Response) => {
 	try {
 		await OTPService(req.body);
-		const { apiSecret } = await authorizeService(req.body);
+		const { apiSecret } = await apiAuthorizeService(req.body);
 
 		return res.status(HTTP_STATUS_CODES.OK).json({
 			success: true,
@@ -218,7 +223,7 @@ router.post("/users/otp", async (req: Request, res: Response) => {
  */
 router.post("/apps/authorize", async (req: Request, res: Response) => {
 	try {
-		const { appName, apiSecret } = await authorizeService(req.body);
+		const { appName, apiSecret } = await apiAuthorizeService(req.body);
 
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
