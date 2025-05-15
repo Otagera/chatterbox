@@ -2,81 +2,72 @@ doctype html
 html(lang='en')
   head
     title Chatterbox Dashboard - #{appName}
-    link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/css/bootstrap.min.css')
+    //- Removed Bootstrap CSS
+    script(src="https://cdn.tailwindcss.com") // Added Tailwind CSS
     script(src='https://unpkg.com/htmx.org@1.5.0')
     style.
-      body {padding: 20px}
-      table {font-family: arial, sans-serif;border-collapse: collapse;width: 100%; font-size:12px;}
       tr.htmx-swapping td {opacity: 0;transition: opacity 0.5s ease-out;}
-      td, th {border: 1px solid #383737;text-align: left;padding: 8px;}
-      tr:nth-child(even) {background-color: #dddddd;}
-      div#copyIconContainer svg{width: 20px; height: 20px}
-  body
-    .container.mt-4
-        h1 Chatterbox Dashboard
-        h2 Application: #{appName}
+      //- div#copyIconContainer svg{width: 20px; height: 20px} // Can be replaced with Tailwind w-5 h-5 on the SVG itself if accessible
+  body(class="bg-gray-100 font-sans leading-normal tracking-normal")
+    .container(class="mx-auto p-4 md:p-8")
+        h1(class="text-3xl md:text-4xl font-bold text-gray-800 mb-2") Chatterbox Dashboard
+        h2(class="text-xl md:text-2xl text-gray-600 mb-6") Application: #{appName}
 
-        .d-flex.justify-content-end.mb-3
-          a.btn.btn-primary.me-2(href="/analytics" style="color: white; text-decoration: none;") Analytics
-          a.btn.btn-secondary.me-2(href="/view/authorize" hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML"  style="margin-right: 5px") New SecKey
-          button.btn.btn-danger(hx-post=`/view/logout` hx-boost="true") Logout
+        .flex.flex-col(class="sm:flex-row sm:justify-end sm:items-center mb-6 space-y-2 sm:space-y-0 sm:space-x-3")
+          a(href="/analytics" class="inline-block bg-blue-500 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded shadow hover:shadow-md transition duration-150 ease-in-out no-underline text-center") Analytics
+          a(href="/view/authorize" hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML" class="inline-block bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded shadow hover:shadow-md transition duration-150 ease-in-out no-underline text-center") New SecKey
+          button(hx-post=`/view/logout` hx-boost="true" class="bg-red-500 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded shadow hover:shadow-md transition duration-150 ease-in-out") Logout
 
-        hr
+        hr(class="border-t border-gray-300 my-6")
         
-        form(hx-post="/view/search" hx-swap="innerHTML" hx-target="#new-log" class="mb-3")
-          input(type="text" placeholder="Level" name="level" class="form-control mb-3" list="levelDatalistOptions")
+        form(hx-post="/view/search" hx-swap="innerHTML" hx-target="#new-log" class="bg-white shadow-md rounded-lg p-6 mb-8 space-y-4")
+          input(type="text" placeholder="Level" name="level" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" list="levelDatalistOptions")
           datalist(id="levelDatalistOptions")
             option(value="info")
             option(value="error")
             option(value="warn")
             option(value="trace")
             option(value="fatal")
-          input(type="text" placeholder="Key" name="key" class="form-control mb-3")
-          div(class="form-group")
-            label(for="startDate") Start Date:
-            input(type="datetime-local" placeholder="Start Date" name="startDate" id="startDate" class="form-control mb-3")
-          div(class="form-group")
-            label(for="endDate") Finish Date:
-            input(type="datetime-local" placeholder="Finish Date" name="endDate" id="endDate" class="form-control mb-3")
-          button(type="submit" class="btn btn-primary") Search Logs
-        table( hx-indicator=".htmx-indicator" class="table table-striped table-hover")
-          colgroup
-            col(span="1" style="width:10%")
-            col(span="1" style="width:28%")
-            col(span="1" style="width:52%")
-            col(span="1" style="width:10%")
-          thead
-            tr
-              th(scope="col") ID
-              th(scope="col") Key
-              th(scope="col") Data
-              th(scope="col") level
-          tbody(id="new-log" class="table-group-divider" hx-target="closest tr" hx-swap="outerHTML swap:0.5s")
-            each log, index in logs
+            option(value="debug")
+          input(type="text" placeholder="Key" name="key" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500")
+          div
+            label(for="startDate" class="block text-sm font-medium text-gray-700 mb-1") Start Date:
+            input(type="datetime-local" name="startDate" id="startDate" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500")
+          div
+            label(for="endDate" class="block text-sm font-medium text-gray-700 mb-1") Finish Date:
+            input(type="datetime-local" name="endDate" id="endDate" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500")
+          button(type="submit" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:shadow-outline transition duration-150 ease-in-out") Search Logs
+        
+        div(class="overflow-x-auto bg-white shadow-lg rounded-lg")
+          table(hx-indicator=".htmx-indicator" class="min-w-full divide-y divide-gray-200")
+            //- colgroup can be kept if specific widths are still desired, but Tailwind's table layout is often fluid
+            //- col(span="1" style="width:10%")
+            //- col(span="1" style="width:28%")
+            //- col(span="1" style="width:52%")
+            //- col(span="1" style="width:10%")
+            thead(class="bg-gray-50")
               tr
-                td(scope="row") #{log.id}
-                td #{log.key}
-                td(hx-get=`/view/get-log-data/${log.id}` hx-target="this" role="button")
-                  small(class="text-muted") #{log.createdAt}
-                td(class=`${log.levelStyle}`) #{log.level}
-            tr(hx-get="/view/get-more-logs" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="this")
-              td(colspan="4" class="fs-1") Loading more...
-        button(class="btn btn-primary" hx-get=`/view/get-more-logs` hx-swap="beforeend" hx-target="#new-log") Fetch More
-
+                th(scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider") ID
+                th(scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider") Key
+                th(scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider") Data / Timestamp
+                th(scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider") Level
+            tbody(id="new-log" class="bg-white divide-y divide-gray-200" hx-target="closest tr" hx-swap="outerHTML swap:0.5s")
+              each log, index in logs
+                tr
+                  td(scope="row" class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900") #{log.id}
+                  td(class="px-6 py-4 whitespace-nowrap text-sm text-gray-700") #{log.key}
+                  td(hx-get=`/view/get-log-data/${log.id}` hx-target="this" role="button" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-50")
+                    small #{log.createdAt}
+                  //- td(class=`px-6 py-4 whitespace-nowrap text-sm font-semibold \
+                  //-   ${log.level === 'info' ? 'text-blue-600 bg-blue-100' : ''} \
+                  //-   ${log.level === 'error' ? 'text-red-600 bg-red-100' : ''} \
+                  //-   ${log.level === 'warn' ? 'text-yellow-600 bg-yellow-100' : ''} \
+                  //-   ${log.level === 'trace' ? 'text-gray-600 bg-gray-100' : ''} \
+                  //-   ${log.level === 'fatal' ? 'text-pink-700 bg-pink-100 font-bold' : ''} \
+                  //- `) #{log.level}
+                  td(class="px-6 py-4 whitespace-nowrap text-sm")
+                    span(class=`${log.levelStyle}`) #{log.level}
+              tr(hx-get="/view/get-more-logs" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="this")
+                td(colspan="4" class="px-6 py-4 text-center text-gray-500 text-sm") Loading more...
+        
     script.
-      document.addEventListener("click", (event) => {
-        const userObject = JSON.parse(`!{JSON.stringify(user)}`);
-        // Assuming userObject has a property like 'apiKey' you want to copy
-        if (userObject && userObject.apiKey) {
-          copyToClipboard(userObject.apiKey);
-        } else {
-          console.error("User API key not found");
-        }
-      });
-
-      const copyToClipboard = (text) => { // text should be a string
-        navigator.clipboard.writeText(text)
-          .then(() => console.log("Text copied to clipboard:", text))
-          .catch(err => console.error("Failed to copy text:", err));
-      };
-  

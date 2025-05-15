@@ -24,23 +24,44 @@ const svgPath = path.join(__dirname, "../../../views/assets/copy.svg");
 const svgContent = fs.readFileSync(svgPath, "utf8");
 
 const router = Router();
+const LIMIT = 20;
 
 /**
  * Determines the CSS class for styling log levels.
  * @param {string} level - The log level string (e.g., "info", "error", "trace").
- * @returns {string} The corresponding CSS class.
+ * @returns {string} The corresponding Tailwind CSS class.
  */
 const getLevelStyle = (level: string): string => {
-	switch (level) {
+	// These classes should be applied to the <td> containing the log level.
+	// They provide padding, text size, font weight, background, and text color.
+	// Adjust 'px-2 py-1 text-xs font-semibold rounded-full' part as needed for overall cell styling,
+	// the specific bg/text colors are per level.
+	const baseClasses =
+		"px-3 py-1 text-xs font-semibold rounded-full text-center"; // Added text-center
+	switch (level.toLowerCase()) {
 		case "info":
-			return "text-success-emphasis";
+			return `${baseClasses} bg-blue-100 text-blue-700`;
 		case "error":
-			return "text-danger";
+			return `${baseClasses} bg-red-100 text-red-700`;
+		case "warn": // Assuming 'warn' level might exist, mapped from 'trace' or new
+			return `${baseClasses} bg-yellow-100 text-yellow-700`;
 		case "trace":
-			return "text-warning";
+			return `${baseClasses} bg-indigo-100 text-indigo-700`; // Changed from yellow to indigo for variety
+		case "fatal":
+			return `${baseClasses} bg-pink-100 text-pink-700 font-bold`;
+		case "debug":
+			return `${baseClasses} bg-gray-100 text-gray-700`;
 		default:
-			return "text-info-emphasis";
+			return `${baseClasses} bg-sky-100 text-sky-700`; // A generic fallback
 	}
+};
+
+// Helper for consistent error message styling
+const renderError = (message: string): string => {
+	return `<div class="my-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md shadow-sm">
+            <p class="font-medium">Error:</p>
+            <p>${message}</p>
+          </div>`;
 };
 
 const getRecentLogs = async (appName: string, limit = 100) => {
@@ -438,7 +459,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response) => {
 	try {
 		const { appName, user, email } = req.session;
 
-		const logs = await getRecentLogs(appName as string, 20);
+		const logs = await getRecentLogs(appName as string, LIMIT);
 
 		return res.render("index", {
 			logs,
@@ -448,13 +469,11 @@ router.get("/", authMiddleware, async (req: Request, res: Response) => {
 			maskKey: maskKey(user as string),
 		});
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Error loading dashboard: ${error}<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || `Error loading dashboard: ${error}`;
+		return res.status(500).send(renderError(message));
 	}
 });
 
@@ -465,25 +484,15 @@ router.get(
 		try {
 			const { appName, user, email } = req.session;
 
-			const logs = await getRecentLogs(appName as string, 100);
-
-			// 1. Log Volume Over Time (e.g., last 7 days)
-			const logVolumeData = await aggregateLogVolume(appName as string, 7); // Returns { labels: [...], datasets: [...] }
-
-			// 2. Log Levels Distribution (e.g., last 7 days)
-			const logLevelData = await aggregateLogLevels(appName as string, 7); // Returns { labels: [...], datasets: [...] }
-
-			// 3. Top Log Keys (e.g., last 7 days, top 10)
-			const topKeysData = await aggregateTopKeys(appName as string, 7, 10); // Returns { labels: [...], datasets: [...] }
-
-			// 4. Error Rate Over Time (e.g., last 7 days)
-			const errorRateData = await aggregateErrorRate(appName as string, 7); // Returns { labels: [...], datasets: [...] }
+			const logVolumeData = await aggregateLogVolume(appName as string, 7);
+			const logLevelData = await aggregateLogLevels(appName as string, 7);
+			const topKeysData = await aggregateTopKeys(appName as string, 7, 10);
+			const errorRateData = await aggregateErrorRate(appName as string, 7);
 
 			// 5. Average Response Time (Optional, if applicable)
 			// const avgTimeData = await aggregateAvgTime(appName as string, 7); // Returns { labels: [...], datasets: [...] }
 
 			return res.render("analytics", {
-				logs,
 				chartData: {
 					logVolume: logVolumeData,
 					logLevel: logLevelData,
@@ -497,14 +506,11 @@ router.get(
 				maskKey: maskKey(user as string),
 			});
 		} catch (error: any) {
-			console.error("Error loading dashboard:", error);
-			if (error instanceof ZodError) {
-				return res.send(`<p>${error.errors[0].message}</p>`);
-			} else if (error && error.message) {
-				return res.send(`<p>${error.message}</p>`);
-			} else {
-				return res.send(`<p>Error loading dashboard: ${error}<p>`);
-			}
+			const message =
+				error instanceof ZodError
+					? error.errors[0].message
+					: error?.message || `Error loading analytics: ${error}`;
+			return res.status(500).send(renderError(message));
 		}
 	}
 );
@@ -521,13 +527,11 @@ router.get("/login", async (req: Request, res: Response) => {
 	try {
 		return res.render("login");
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Something went wrong!!!";
+		return res.status(500).send(renderError(message));
 	}
 });
 
@@ -543,59 +547,63 @@ router.get("/view/get-more-logs", async (req: Request, res: Response) => {
 	if (!paginationState.getHasNextPage()) return res.send();
 
 	try {
-		const logs = await services.logs.findByCursor(
+		const logsResult = await services.logs.findByCursor(
 			{},
 			{
-				first: 20,
+				first: LIMIT,
 				after: paginationState.getCurrentCursor() as string,
 				orderBy: { createdAt: "desc" },
 			}
 		);
 
-		paginationState.setCurrentCursor(logs.endCursor);
-		paginationState.setHasNextPage(logs.hasNextPage);
+		paginationState.setCurrentCursor(logsResult.endCursor);
+		paginationState.setHasNextPage(logsResult.hasNextPage);
 
 		let logsHTML = ``;
 
-		logs.items.forEach((log) => {
-			let levelStyle = getLevelStyle(log.level);
+		logsResult.items.forEach((log) => {
+			const formattedDate = log.createdAt;
+			// ? new Date(log.createdAt).toLocaleString()
+			// : "N/A";
+			const levelDisplayClasses = getLevelStyle(log.level);
 
+			// Note: ensure log.id and log.key are properly escaped if they can contain HTML special characters.
+			// For simplicity here, assuming they are safe.
 			const logHTML = `
-          <tr>
-            <td scope="row"> ${log.id}</td>
-            <td> ${log.key} </td>
-
-            <td hx-get=/view/get-log-data/${log.id} hx-target="this" role="button">
-              <small class="text-muted">${log.createdAt}</small>
-            </td>
-            <td class=${levelStyle}> ${log.level} </td>
-          </tr>
-        `;
+				<tr class="hover:bg-gray-50 transition-colors duration-150">
+					<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${log.id}</td>
+					<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${log.key}</td>
+					<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-100" hx-get="/view/get-log-data/${log.id}" hx-target="this" role="button">
+						<span class="text-xs">${formattedDate}</span>
+					</td>
+					<td class="px-6 py-4 whitespace-nowrap text-sm">
+							<span class="${levelDisplayClasses}">${log.level}</span>
+					</td>
+				</tr>
+			`;
 			logsHTML = logsHTML.concat(logHTML);
 		});
 
 		if (paginationState.getHasNextPage()) {
 			logsHTML = logsHTML.concat(
 				`<tr hx-get="/view/get-more-logs" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="this">
-					<td colspan="4" class="fs-1"> Loading more...</td>
-				</tr>
-				`
+          <td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base">Loading more...</td>
+        </tr>
+        `
 			);
 		} else {
 			logsHTML = logsHTML.concat(
-				`<tr><td colspan="4" class="fs-1">END!!!</td></tr>`
+				`<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base font-semibold">END OF LOGS</td></tr>`
 			);
 		}
 
 		return res.send(logsHTML);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Something went wrong fetching more logs!!!";
+		return res.status(500).send(renderError(message));
 	}
 });
 
@@ -615,26 +623,40 @@ router.get(
 		const id = req.params.id;
 		try {
 			const log = await services.logs.findOneOrFail(id);
-			if (!log) {
-				throw new Error("Something went wrong!!!");
-			}
-			let logData = {};
+
+			let logDataToDisplay: any = {};
 			const {
-				data: possibleData,
+				data: possibleEncryptedData,
 				name,
 				context,
 				traceId,
 				request,
 				response,
 				timeTaken,
+				time,
+				createdAt,
 			} = log;
-			let data = possibleData;
-			if (typeof data === "string") {
-				data = decryptObj(data, req.appName || "");
+			let decryptedData = possibleEncryptedData;
+			if (typeof possibleEncryptedData === "string") {
+				try {
+					decryptedData = decryptObj(possibleEncryptedData, req.appName || "");
+				} catch (decryptionError) {
+					console.warn(
+						`Failed to decrypt log data for log ID ${id}:`,
+						decryptionError
+					);
+					decryptedData = {
+						decryption_error: "Could not decrypt data.",
+						original_data_preview:
+							possibleEncryptedData.substring(0, 100) + "...",
+					};
+				}
 			}
 
-			logData = {
-				...data,
+			logDataToDisplay = {
+				...(typeof decryptedData === "object" && decryptedData !== null
+					? decryptedData
+					: { data: decryptedData }),
 				name,
 				context,
 				traceId,
@@ -643,39 +665,27 @@ router.get(
 				timeTaken,
 			};
 
+			const formattedTime =
+				time || (createdAt ? new Date(createdAt).toLocaleString() : "N/A");
+
 			return res.send(
 				`
-          <td style="max-width: 400px;">
-            <small class="text-muted"> ${log?.time}</small>
-            <br>
-            <pre style="
-            font-size:10px;
-            display: block;
-            padding: 9.5px;
-            margin: 0 0 10px;
-            font-size: 13px;
-            line-height: 1.42857143;
-            color: #333;
-            word-break: break-all;
-            word-wrap: break-word;
-            background-color: #f5f5f5;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            overflow-wrap: break-word;
-            overflow-x: auto;
-            overflow-y: auto;
-            "> ${JSON.stringify(logData, null, 4)} </pre>
-          </td>
+          <div class="px-6 py-4 text-sm text-gray-700 max-w-2xl mx-auto">
+            <span class="block text-xs text-gray-500 mb-2">Log Time: ${formattedTime}</span>
+            <pre class="block p-3 my-2 text-xs leading-relaxed text-gray-800 bg-gray-50 border border-gray-300 rounded-md whitespace-pre-wrap break-words overflow-auto shadow-sm">${JSON.stringify(
+							logDataToDisplay,
+							null,
+							2
+						)}</pre>
+          </div>
         `
-			);
+			); // Using max-w-2xl, whitespace-pre-wrap, break-words
 		} catch (error: any) {
-			if (error instanceof ZodError) {
-				return res.send(`<p>${error.errors[0].message}</p>`);
-			} else if (error && error.message) {
-				return res.send(`<p>${error.message}</p>`);
-			} else {
-				return res.send(`<p>Something went wrong!!!<p>`);
-			}
+			const message =
+				error instanceof ZodError
+					? error.errors[0].message
+					: error?.message || "Something went wrong fetching log data!!!";
+			return res.status(500).send(renderError(message)); // Send styled error
 		}
 	}
 );
@@ -690,13 +700,15 @@ router.get(
  */
 router.post("/view/search", async (req: Request, res: Response) => {
 	let filter: {
+		appName?: string;
 		level?: string;
 		key?: string;
 		time?: {
 			$gte?: Date;
 			$lt?: Date;
 		};
-	} = { time: {} };
+	} = { time: {}, appName: req.session.appName };
+	console.log("req.body", req.body);
 	if ("startDate" in req.body && req.body.startDate.length) {
 		if (filter.time) filter.time["$gte"] = new Date(req.body.startDate);
 	}
@@ -714,51 +726,91 @@ router.post("/view/search", async (req: Request, res: Response) => {
 		delete filter.time;
 	}
 	try {
-		const logs = await services.logs.findByCursor(filter, {
-			first: 100,
-			// after: paginationState.getCurrentCursor() as string, // Commented out as search might need to reset pagination
+		const logsResult = await services.logs.findByCursor(filter, {
+			first: LIMIT,
+			after: paginationState.getCurrentCursor() as string,
 			orderBy: { createdAt: "desc" },
 		});
 
-		paginationState.setCurrentCursor(logs.endCursor);
-		paginationState.setHasNextPage(logs.hasNextPage);
+		paginationState.setCurrentCursor(logsResult.endCursor);
+		paginationState.setHasNextPage(logsResult.hasNextPage);
 
 		let logsHTML = ``;
-		logs.items.forEach((log) => {
-			let levelStyle = getLevelStyle(log.level);
+		if (logsResult.items.length === 0) {
+			logsHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-500 text-lg font-medium">No logs found matching your criteria.</td></tr>`;
+		} else {
+			logsResult.items.forEach((log) => {
+				const formattedDate = log.createdAt;
+				// ? new Date(log.createdAt).toLocaleString()
+				// : "N/A";
+				const levelDisplayClasses = getLevelStyle(log.level);
 
-			const logHTML = `
-          <tr>
-            <td scope="row"> ${log.id}</td>
-            <td> ${log.key} </td>
+				const logHTML = `
+            <tr class="hover:bg-gray-50 transition-colors duration-150">
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${log.id}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${log.key}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-100" hx-get="/view/get-log-data/${log.id}" hx-target="this" role="button">
+                <span class="text-xs">${formattedDate}</span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <span class="${levelDisplayClasses}">${log.level}</span>
+              </td>
+            </tr>
+          `;
+				logsHTML = logsHTML.concat(logHTML);
+			});
 
-            <td hx-get=/view/get-log-data/${log.id} hx-target="this" role="button">
-              <small class="text-muted">${log.createdAt}</small>
-            </td>
-            <td class=${levelStyle}> ${log.level} </td>
-          </tr>
-        `;
-			logsHTML = logsHTML.concat(logHTML);
-		});
-		if (logs.items.length === 0) {
-			// Corrected: was logs.length
-			logsHTML = logsHTML.concat(
-				`<tr><td colspan="4" class="fs-1 text-center">Empty</td></tr>`
-			);
-		} else if (!paginationState.getHasNextPage())
-			logsHTML = logsHTML.concat(
-				`<tr><td colspan="4" class="fs-1 text-center">END!!!</td></tr>`
-			);
-
+			if (paginationState.getHasNextPage()) {
+				logsHTML = logsHTML.concat(
+					`<tr id="more-search-logs" class="h-7">
+						<td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base h-7">
+							<p>Loading...</p>
+							<form class="collapse h-7" hx-post="/view/search" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="#more-search-logs">
+								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Level" name="level" list="levelDatalistOptions" value="${
+									req.body.level
+								}">
+								<datalist id="levelDatalistOptions">
+									<option value="info"></option>
+									<option value="error"></option>
+									<option value="warn"></option>
+									<option value="trace"></option>
+									<option value="fatal"></option>
+									<option value="debug"></option>
+								</datalist>
+								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Key" name="key" value="${
+									req.body.key ? req.body.key : ""
+								}">
+								<div>
+									<label class="block text-sm font-medium text-gray-700 mb-1" for="startDate">Start Date:</label>
+									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="startDate" id="startDate" value="${
+										req.body.startDate ? req.body.startDate : ""
+									}">
+								</div>
+								<div>
+									<label class="block text-sm font-medium text-gray-700 mb-1" for="endDate">Finish Date:</label>
+									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="endDate" id="endDate" value="${
+										req.body.endDate ? req.body.endDate : ""
+									}">
+								</div>
+							</form>
+						</td>
+					</tr>
+					`
+				);
+			} else {
+				logsHTML = logsHTML.concat(
+					`<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base font-semibold">END OF LOGS</td></tr>`
+				);
+			}
+			// Note: Infinite scroll for search results might need its own hx-get target if different from main log list.
+		}
 		return res.send(logsHTML);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Something went wrong during search!!!";
+		return res.status(500).send(renderError(message));
 	}
 });
 
@@ -771,28 +823,34 @@ router.post("/view/search", async (req: Request, res: Response) => {
  */
 const getApps = (apps: AppKey[], loginToken: string, email: string): string => {
 	let appHTML = "";
+	if (apps.length === 0) {
+		return `<li class="py-2 text-gray-500">No applications found for this user.</li>`;
+	}
 	apps.forEach((app, index) => {
+		const encodedAppName = encodeURIComponent(app.appName);
+		const encodedLoginToken = encodeURIComponent(loginToken);
+		const encodedEmail = encodeURIComponent(email);
+
 		appHTML += `
-      <li class="d-flex justify-content-between">
-      <p>App: <span
-        hx-trigger="click"
-        hx-target="#appsList"
-        hx-swap="outerHTML"
-        hx-get="/view/apps?appName=${app.appName}&loginToken=${loginToken}"
-        class="text-primary text-decoration-underline"
-        style="cursor:pointer">
-          ${app.appName}
-        </span></p>
-        <div id="app-delete-box-${index}">
-          <p
+      <li class="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
+        <span
+          hx-trigger="click"
+          hx-target="#appsListContainer" 
+          hx-swap="innerHTML" 
+          hx-get="/view/apps?appName=${encodedAppName}&loginToken=${encodedLoginToken}"
+          class="text-blue-600 hover:text-blue-800 underline cursor-pointer font-medium">
+            ${app.appName}
+        </span>
+        <div id="app-delete-box-${index}" class="text-sm">
+          <button
+            type="button"
             hx-trigger="click"
             hx-target="#app-delete-box-${index}"
             hx-swap="innerHTML"
-            hx-get="/view/apps/delete-confirmation?appName=${app.appName}&loginToken=${loginToken}&email=${email}&appIndex=${index}"
-            class="text-primary"
-            style="cursor:pointer">
+            hx-get="/view/apps/delete-confirmation?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${index}"
+            class="text-red-500 hover:text-red-700 hover:underline cursor-pointer font-medium">
             Delete
-          </p>
+          </button>
         </div>
       </li>
     `;
@@ -813,39 +871,49 @@ const getApps = (apps: AppKey[], loginToken: string, email: string): string => {
 router.post("/view/login", async (req: Request, res: Response) => {
 	try {
 		const { email, existingApps, loginToken } = await loginService(req.body);
+		req.session.email = email;
+
+		const encodedLoginToken = encodeURIComponent(loginToken);
+		const encodedEmail = encodeURIComponent(email);
 
 		const appsHTML = `
-      <div id="appsList">
-        <ol>
+      <div id="appsListContainer" class="mt-6 bg-white p-6">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">Your Applications</h2>
+        <ul class="divide-y divide-gray-200">
           ${getApps(existingApps, loginToken, email)}
-        </ol>
-        <p
-            hx-trigger="click"
-            hx-target="#appsList"
-            hx-swap="outerHTML"
-            hx-get="/view/apps?newEmail=${email}&loginToken=${loginToken}"
-            class="text-primary text-decoration-underline"
-            style="cursor:pointer">
-              Add new Application
-            </p>
+        </ul>
+        <div class="mt-6">
+          <button
+              type="button"
+              hx-trigger="click"
+              hx-target="#appsListContainer"
+              hx-swap="innerHTML"
+              hx-get="/view/apps?newEmail=${encodedEmail}&loginToken=${encodedLoginToken}"
+              class="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                Add New Application
+          </button>
+        </div>
       </div>
     `;
-
-		req.session.email = email;
 		return res.send(appsHTML);
 	} catch (error: any) {
+		let errorMessage = "Login failed. Please try again.";
 		if (error instanceof ZodError) {
-			return res.send(`
-			<form class="mb-3" hx-post="/view/login" hx-swap="outerHTML"><input class="form-control mb-3" type="email" placeholder="Email" name="email">
-				<button class="btn btn-primary" type="submit">Login</button>
-			</form>
-			<p>${error.errors[0].message}</p>
-			`);
+			errorMessage = error.errors.map((e) => e.message).join(", ");
 		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
+			errorMessage = error.message;
 		}
+
+		return res.send(`
+      <div class="max-w-md w-full bg-white shadow-xl rounded-lg p-8 space-y-6">
+        <h1 class="text-3xl font-bold text-center text-gray-800">Chatterbox Login</h1>
+        <form hx-post="/view/login" hx-swap="outerHTML" class="space-y-6">
+          <input type="email" placeholder="Email" name="email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required />
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:shadow-outline">Login</button>
+        </form>
+        ${renderError(errorMessage)}
+      </div>
+    `);
 	}
 });
 
@@ -862,20 +930,24 @@ router.post("/view/logout", async (req: Request, res: Response) => {
 		if (req.session) {
 			req.session.destroy((err: any) => {
 				if (err) {
-					throw err;
+					res.setHeader("HX-Redirect", "/login");
+					return res
+						.status(500)
+						.send(renderError("Could not log out properly."));
 				}
+				res.setHeader("HX-Redirect", "/");
+				return res.send();
 			});
-		}
-		res.setHeader("HX-Redirect", "/");
-		res.send();
-	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
 		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
+			res.setHeader("HX-Redirect", "/");
+			res.send();
 		}
+	} catch (error: any) {
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Something went wrong during logout!!!";
+		return res.status(500).send(renderError(message));
 	}
 });
 
@@ -888,35 +960,47 @@ router.post("/view/logout", async (req: Request, res: Response) => {
  */
 const getViewApps = async (
 	appName: string,
-	loginToken: string
+	loginToken: string,
+	userEmail?: string
 ): Promise<string> => {
 	const app = await services.appKeys.findOne({
 		appName: appName as string,
 	});
 
 	if (!app) {
-		throw new Error("App not found.");
+		throw new Error("Application not found.");
 	}
 	const user = await services.users.findOne({
 		id: app.user.id,
 		loginToken: hashLogintoken(loginToken as string),
 	});
-	if (user && app) {
-		// Ensure user and app are found
-		await generateSaveAndSendOTP(user);
 
-		const logHTML = `
-    <form hx-post="/view/otp?appName=${appName}" hx-boost="true" hx-swap="innerHTML" hx-target="#otpErrorMsg">
-      <h3>${user.email}</h3>
-      <input type="email" placeholder="Email" name="email" class="d-none form-control mb-3" value="${user.email}"/>
-      <input type="number" placeholder="OTP" name="otp" class="form-control mb-3" />
-      <button type="submit" class="btn btn-primary"> Login </button>
-    </form>
-		<p id="otpErrorMsg"></p>
+	if (!user)
+		throw new Error(
+			"User authentication failed or user not found for this app."
+		);
+
+	await generateSaveAndSendOTP(user);
+
+	const displayEmail = userEmail || user.email;
+	const encodedAppName = encodeURIComponent(appName);
+
+	const otpFormHTML = `
+    <div id="otpFormContainer" class="bg-white p-6 w-full max-w-md mx-auto">
+      <h2 class="text-xl font-semibold text-gray-700 mb-1">Verify Access for <span class="font-bold">${appName}</span></h2>
+      <p class="text-sm text-gray-600 mb-4">An OTP has been sent to: ${displayEmail}</p>
+      <form hx-post="/view/otp?appName=${encodedAppName}" hx-swap="innerHTML" hx-target="#otpFormContainer">
+        <input type="email" name="email" class="hidden" value="${displayEmail}" />
+        <div class="mb-4">
+          <label for="otp" class="block text-sm font-medium text-gray-700 mb-1">Enter OTP</label>
+          <input type="number" placeholder="6-digit OTP" name="otp" id="otp" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+        </div>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Verify & Login</button>
+      </form>
+      <div id="otpErrorMsg" class="mt-3"></div>
+    </div>
   `;
-		return logHTML;
-	}
-	throw new Error("Login failed, please try again. User or App not found.");
+	return otpFormHTML;
 };
 
 /**
@@ -934,9 +1018,11 @@ router.get("/view/apps", async (req: Request, res: Response) => {
 	try {
 		const { appName, newEmail, loginToken } = req.query;
 		if (appName && loginToken) {
+			const userEmailFromSession = req.session.email;
 			const appsHTML = await getViewApps(
 				appName as string,
-				loginToken as string
+				loginToken as string,
+				userEmailFromSession
 			);
 			return res.send(appsHTML);
 		} else if (newEmail && loginToken) {
@@ -945,31 +1031,41 @@ router.get("/view/apps", async (req: Request, res: Response) => {
 				loginToken: hashLogintoken(loginToken as string),
 			});
 
-			if (user) {
-				const logHTML = `
-        <form hx-post="/view/apps?loginToken=${loginToken}" hx-boost="true">
-          <h3>Create New App</h3>
-          <h3>${user?.email}</h3>
-          <input type="email" placeholder="Email" name="email" class="d-none form-control mb-3" value="${user?.email}" />
-          <input type="text" placeholder="App Name" name="appName" class="form-control mb-3" />
-          <input type="number" placeholder="Expires (In seconds)" name="expires" class="d-none form-control mb-3" value="1" />
-          <button type="submit" class="btn btn-primary"> Create App </button>
-        </form>
+			if (!user)
+				throw new Error(
+					"User not found for creating a new app. Please log in again."
+				);
+
+			const encodedLoginToken = encodeURIComponent(loginToken as string);
+
+			const newAppFormHTML = `
+        <div id="newAppFormContainer" class="mt-6 bg-white shadow-md rounded-lg p-6 w-full max-w-md mx-auto">
+          <h2 class="text-xl font-semibold text-gray-700 mb-4">Create New Application</h2>
+          <p class="text-sm text-gray-600 mb-4">For user: ${user.email}</p>
+          <form hx-post="/view/apps?loginToken=${encodedLoginToken}" hx-swap="innerHTML" hx-target="#newAppFormContainer">
+            <input type="email" name="email" class="hidden" value="${user.email}" />
+            <div class="mb-4">
+              <label for="appNameInput" class="block text-sm font-medium text-gray-700 mb-1">Application Name</label>
+              <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+            </div>
+            <input type="number" name="expires" class="hidden" value="0" /> <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
+          </form>
+          <div id="newAppErrorMsg" class="mt-3"></div>
+        </div>
       `;
-				return res.send(logHTML);
-			}
-			throw new Error("User not found for creating a new app.");
+			return res.send(newAppFormHTML);
 		} else {
-			throw new Error("Invalid parameters for /view/apps.");
+			throw new Error(
+				"Invalid parameters. Please select an app or choose to create a new one."
+			);
 		}
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Something went wrong navigating apps section!!!";
+		// Target for this error message might need to be specific if this is within an HTMX swap
+		return res.send(renderError(message));
 	}
 });
 
@@ -984,22 +1080,51 @@ router.get("/view/apps", async (req: Request, res: Response) => {
  * Sends an error message as HTML if an error occurs.
  */
 router.post("/view/apps", async (req: Request, res: Response) => {
+	const { loginToken } = req.query;
 	try {
-		const { loginToken } = req.query;
 		if (!loginToken) throw new Error("Login token is required.");
 
-		const { appName } = await createApplication(req.body);
+		const { appName, email } = await createApplication(req.body);
 
-		const appsHTML = await getViewApps(appName as string, loginToken as string);
+		const appsHTML = await getViewApps(
+			appName as string,
+			loginToken as string,
+			email || req.body.email
+		);
 		return res.send(appsHTML);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors.map((e) => e.message).join(", ")
+				: error?.message || "Failed to create application.";
+		// Attempt to resend the form with the error, might need more context for hx-target
+		// For now, sending a general error or the form again if possible.
+		// This specific error should ideally be handled by HTMX to target an error message area within the form.
+		const userEmailForForm = req.body.email;
+		const encodedLoginToken = encodeURIComponent(loginToken as string);
+		const newAppFormWithErrorHTML = `
+        <div id="newAppFormContainer" class="mt-6 bg-white shadow-md rounded-lg p-6 w-full max-w-md mx-auto">
+          <h2 class="text-xl font-semibold text-gray-700 mb-4">Create New Application</h2>
+          ${
+						userEmailForForm
+							? `<p class="text-sm text-gray-600 mb-4">For user: ${userEmailForForm}</p>`
+							: ""
+					}
+          <form hx-post="/view/apps?loginToken=${encodedLoginToken}" hx-swap="innerHTML" hx-target="#newAppFormContainer">
+            <input type="email" name="email" class="hidden" value="${userEmailForForm}" />
+            <div class="mb-4">
+              <label for="appNameInput" class="block text-sm font-medium text-gray-700 mb-1">Application Name</label>
+              <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="${
+								req.body.appName || ""
+							}" required />
+            </div>
+            <input type="number" name="expires" class="hidden" value="0" />
+            <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
+          </form>
+          <div id="newAppErrorMsg" class="mt-3 text-red-500 text-sm">${message}</div>
+        </div>
+      `;
+		return res.send(newAppFormWithErrorHTML);
 	}
 });
 
@@ -1019,37 +1144,40 @@ router.get(
 			if (!appName || !loginToken || !email || appIndex === undefined) {
 				throw new Error("Missing parameters for delete confirmation.");
 			}
-			const logHTML = `
-        <div class="d-flex justify-content-between">
-          <p
+			const encodedAppName = encodeURIComponent(appName as string);
+			const encodedLoginToken = encodeURIComponent(loginToken as string);
+			const encodedEmail = encodeURIComponent(email as string);
+
+			const confirmationHTML = `
+        <div class="flex justify-end items-center space-x-3 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+          <span class="text-sm text-yellow-700">Delete ${appName}?</span>
+          <button
+            type="button"
             hx-trigger="click"
             hx-target="#app-delete-box-${appIndex}"
             hx-swap="innerHTML"
-            hx-get="/view/apps/delete-cancel?appName=${appName}&loginToken=${loginToken}&email=${email}&appIndex=${appIndex}"
-            class="text-primary"
-            style="cursor:pointer; margin-right: 5px;">
+            hx-get="/view/apps/delete-cancel?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}"
+            class="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400">
               Cancel
-          </p>
-          <p
+          </button>
+          <button
+            type="button"
             hx-trigger="click"
-            hx-target="#appsList"
-            hx-swap="outerHTML"
-            hx-delete="/view/apps?appName=${appName}&loginToken=${loginToken}&email=${email}&appIndex=${appIndex}"
-            class="text-primary"
-            style="cursor:pointer; margin-left: 5px;">
-              Delete
-          </p>
+            hx-target="#appsListContainer" 
+            hx-swap="innerHTML"
+            hx-delete="/view/apps?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}"
+            class="px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-red-500">
+              Confirm Delete
+          </button>
         </div>
       `;
-			return res.send(logHTML);
+			return res.send(confirmationHTML);
 		} catch (error: any) {
-			if (error instanceof ZodError) {
-				return res.send(`<p>${error.errors[0].message}</p>`);
-			} else if (error && error.message) {
-				return res.send(`<p>${error.message}</p>`);
-			} else {
-				return res.send(`<p>Something went wrong!!!<p>`);
-			}
+			const message =
+				error instanceof ZodError
+					? error.errors[0].message
+					: error?.message || "Error showing delete confirmation.";
+			return res.status(500).send(renderError(message));
 		}
 	}
 );
@@ -1068,26 +1196,28 @@ router.get("/view/apps/delete-cancel", async (req: Request, res: Response) => {
 		if (!appName || !loginToken || !email || appIndex === undefined) {
 			throw new Error("Missing parameters for delete cancellation.");
 		}
-		const logHTML = `
-      <p
+		const encodedAppName = encodeURIComponent(appName as string);
+		const encodedLoginToken = encodeURIComponent(loginToken as string);
+		const encodedEmail = encodeURIComponent(email as string);
+
+		const cancelHTML = `
+      <button
+        type="button"
         hx-trigger="click"
         hx-target="#app-delete-box-${appIndex}"
-        hx-swap="outerHTML"
-        hx-get="/view/apps/delete-confirmation?appName=${appName}&loginToken=${loginToken}&email=${email}&appIndex=${appIndex}"
-        class="text-primary"
-        style="cursor:pointer">
+        hx-swap="innerHTML"
+        hx-get="/view/apps/delete-confirmation?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}"
+        class="text-red-500 hover:text-red-700 hover:underline cursor-pointer font-medium">
         Delete
-      </p>
+      </button>
       `;
-		return res.send(logHTML);
+		return res.send(cancelHTML);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Error cancelling deletion.";
+		return res.status(500).send(renderError(message));
 	}
 });
 
@@ -1102,10 +1232,10 @@ router.get("/view/apps/delete-cancel", async (req: Request, res: Response) => {
  * Sends an error message as HTML if an error occurs (e.g., invalid user, app not found).
  */
 router.delete("/view/apps", async (req: Request, res: Response) => {
+	const { appName, loginToken, email } = req.query;
 	try {
-		const { appName, loginToken, email } = req.query;
 		if (!appName || !loginToken || !email) {
-			throw new Error("Missing parameters for deleting an app.");
+			throw new Error("Missing parameters for deleting an application.");
 		}
 
 		let user = await services.users.findOne({
@@ -1113,7 +1243,9 @@ router.delete("/view/apps", async (req: Request, res: Response) => {
 			loginToken: hashLogintoken(loginToken as string),
 		});
 		if (!user) {
-			throw new Error("Invalid User or unauthorized.");
+			throw new Error(
+				"Invalid User or unauthorized to delete this application."
+			);
 		}
 
 		let appKeyEntry = await services.appKeys.findOne({
@@ -1121,39 +1253,81 @@ router.delete("/view/apps", async (req: Request, res: Response) => {
 			user: user,
 		});
 
-		if (appKeyEntry) {
-			await services.em.removeAndFlush(appKeyEntry);
-		} else {
-			throw new Error("App not found or does not belong to this user.");
+		if (!appKeyEntry) {
+			throw new Error("Application not found or does not belong to this user.");
 		}
 
-		let existingApps = await services.appKeys.find({ user });
-		const appsHTML = `
-    <div id="appsList">
-      <ol>
-        ${getApps(existingApps, loginToken as string, email as string)}
-      </ol>
-      <p
-          hx-trigger="click"
-          hx-target="#appsList"
-          hx-swap="outerHTML"
-          hx-get="/view/apps?newEmail=${user.email}&loginToken=${loginToken}"
-          class="text-primary text-decoration-underline"
-          style="cursor:pointer">
-            Add new Application
-          </p>
-    </div>
-  `;
+		await services.em.removeAndFlush(appKeyEntry);
 
-		return res.send(appsHTML);
+		const existingApps = await services.appKeys.find({ user });
+		const encodedLoginToken = encodeURIComponent(loginToken as string);
+		const encodedUserEmail = encodeURIComponent(user.email);
+
+		const updatedAppsListHTML = `
+      <div id="appsListContainer" class="mt-6 bg-white p-6">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">Your Applications</h2>
+        <ul class="divide-y divide-gray-200">
+          ${getApps(existingApps, loginToken as string, user.email)}
+        </ul>
+        <div class="mt-6">
+          <button
+              type="button"
+              hx-trigger="click"
+              hx-target="#appsListContainer"
+              hx-swap="innerHTML"
+              hx-get="/view/apps?newEmail=${encodedUserEmail}&loginToken=${encodedLoginToken}"
+              class="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                Add New Application
+          </button>
+        </div>
+        <p class="mt-4 text-sm text-green-600">Application '${appName}' deleted successfully.</p>
+      </div>
+    `;
+		return res.send(updatedAppsListHTML);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Failed to delete application.";
+		// If deletion fails, ideally, we'd send back the original list with an error message.
+		// For simplicity, sending a general error that HTMX can place.
+		// Or, you could re-fetch the original list and add an error message above/below it.
+		const existingApps =
+			req.session.email && loginToken
+				? await services.appKeys.find({
+						user: {
+							email: req.session.email,
+							loginToken: hashLogintoken(loginToken as string),
+						},
+				  })
+				: [];
+		const appsListWithError = `
+    <div id="appsListContainer" class="mt-6 bg-white p-6">
+       ${renderError(
+					message
+				)} <h2 class="text-xl font-semibold text-gray-700 mb-4">Your Applications</h2>
+        <ul class="divide-y divide-gray-200">
+          ${getApps(
+						existingApps,
+						loginToken as string,
+						req.session.email || ""
+					)}
+        </ul>
+        <div class="mt-6">
+          <button
+              type="button"
+              hx-trigger="click"
+              hx-target="#appsListContainer"
+              hx-swap="innerHTML"
+              hx-get="/view/apps?newEmail=${encodeURIComponent(
+								req.session.email || ""
+							)}&loginToken=${encodeURIComponent(loginToken as string)}"
+              class="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                Add New Application
+          </button>
+        </div>
+      </div>`;
+		return res.status(400).send(appsListWithError);
 	}
 });
 
@@ -1169,10 +1343,13 @@ router.delete("/view/apps", async (req: Request, res: Response) => {
  */
 router.post("/view/otp", async (req: Request, res: Response) => {
 	try {
-		if (!req.session.email) {
-			throw new Error("Session email not found. Please login again.");
+		const userEmailFromSession = req.session.email;
+		if (!userEmailFromSession) {
+			throw new Error(
+				"Session expired or email not found. Please login again."
+			);
 		}
-		await OTPService({ ...req.body, email: req.session.email });
+		await OTPService({ otp: req.body.otp, email: userEmailFromSession });
 
 		const { appName, token } = await authorizeService({
 			email: req.session.email,
@@ -1185,13 +1362,34 @@ router.post("/view/otp", async (req: Request, res: Response) => {
 		res.setHeader("HX-Redirect", "/");
 		res.send();
 	} catch (error: any) {
-		let errorMessage = "Please login again";
-		if (error && error.message) {
+		let errorMessage = "OTP verification failed. Please try again.";
+		if (error instanceof ZodError) {
+			errorMessage = error.errors.map((e) => e.message).join(", ");
+		} else if (error && error.message) {
 			errorMessage = error.message;
 		}
-		return res.send(`
-			${errorMessage}
-		`);
+
+		const appNameQuery = req.query.appName as string;
+		const userEmailForForm = req.session.email || req.body.email;
+
+		const encodedAppNameQuery = encodeURIComponent(appNameQuery);
+
+		const otpFormWithErrorHTML = `
+      <div id="otpFormContainer" class="bg-white p-6 w-full max-w-md mx-auto">
+        <h2 class="text-xl font-semibold text-gray-700 mb-1">Verify Access for <span class="font-bold">${appNameQuery}</span></h2>
+        <p class="text-sm text-gray-600 mb-4">An OTP has been sent to: ${userEmailForForm}</p>
+        <form hx-post="/view/otp?appName=${encodedAppNameQuery}" hx-swap="innerHTML" hx-target="#otpFormContainer">
+          <input type="email" name="email" class="hidden" value="${userEmailForForm}" />
+          <div class="mb-4">
+            <label for="otp" class="block text-sm font-medium text-gray-700 mb-1">Enter OTP</label>
+            <input type="number" placeholder="6-digit OTP" name="otp" id="otp" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+          </div>
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Verify & Login</button>
+        </form>
+        <div id="otpErrorMsg" class="mt-3 text-red-500 text-sm p-2 bg-red-50 rounded-md border border-red-200">${errorMessage}</div>
+      </div>
+    `;
+		return res.status(401).send(otpFormWithErrorHTML); // 401 Unauthorized or 400 Bad Request
 	}
 });
 
@@ -1208,35 +1406,37 @@ router.get("/view/authorize", async (req: Request, res: Response) => {
 	try {
 		const { email, appName } = req.session;
 		if (!email || !appName) {
-			throw new Error("User session not found or app not selected.");
+			throw new Error(
+				"User session not found or app not selected. Please log in."
+			);
 		}
 		const { apiSecret } = await apiAuthorizeService({ email, appName });
 		req.session.user = apiSecret;
-		return res.send(`
-			<p> Secret Key: </p>
-       <span id="apiKey"> ${maskKey(apiSecret)}  </span>
-       <div
-          style="
-            width: 20px;
-            height: 20px;
-            padding-left: 10px;
-            cursor:pointer;
-            display: inline-block; /* Added for better layout with span */
-            vertical-align: middle; /* Added for better layout with span */
-          "
-          id="copyIconContainer"
-          title="Copy API Key"
-          onclick="navigator.clipboard.writeText('${apiSecret}')"> ${svgContent}
+		const apiKeyDisplayHTML = `
+      <div id="apiKeyDisplaySection" class="p-4 bg-gray-50 rounded-lg shadow-sm border border-gray-200">
+        <p class="text-sm font-medium text-gray-700 mb-1">Your API Secret Key for <span class="font-semibold">${appName}</span>:</p>
+        <div class="flex items-center space-x-2 bg-gray-100 p-2 rounded-md">
+          <span id="apiKeyToCopy" class="font-mono text-sm text-gray-800 break-all">${maskKey(
+						apiSecret
+					)}</span>
+          <button 
+            type="button"
+            title="Copy API Key"
+            class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onclick="navigator.clipboard.writeText('${apiSecret}').then(() => { const el = document.getElementById('copyFeedback-${appName}'); if(el) { el.textContent = 'Copied!'; setTimeout(() => el.textContent = '', 2000); } }).catch(err => console.error('Failed to copy: ', err))">
+            ${svgContent.replace("<svg", '<svg class="w-5 h-5 fill-current"')}
+          </button>
+        </div>
+        <span id="copyFeedback-${appName}" class="text-xs text-green-600 mt-1 h-4 block"></span>
       </div>
-    `);
+    `;
+		return res.send(apiKeyDisplayHTML);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return res.send(`<p>${error.errors[0].message}</p>`);
-		} else if (error && error.message) {
-			return res.send(`<p>${error.message}</p>`);
-		} else {
-			return res.send(`<p>Something went wrong!!!<p>`);
-		}
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Could not retrieve API key.";
+		return res.status(500).send(renderError(message));
 	}
 });
 

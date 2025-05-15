@@ -2,77 +2,54 @@ doctype html
 html(lang='en')
   head
     title Chatterbox Dashboard - #{appName}
-    link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/css/bootstrap.min.css')
+    //- Removed Bootstrap CSS
+    script(src="https://cdn.tailwindcss.com") // Added Tailwind CSS
     script(src='https://unpkg.com/htmx.org@1.5.0')
     script(src="https://cdn.jsdelivr.net/npm/chart.js")
     script(src="https://cdn.jsdelivr.net/npm/@cubejs-client/core/dist/cubejs-client-core.umd.js")
     style.
-      body {padding: 20px}
-      table {font-family: arial, sans-serif;border-collapse: collapse;width: 100%; font-size:12px;}
-      tr.htmx-swapping td {opacity: 0;transition: opacity 0.5s ease-out;}
-      td, th {border: 1px solid #383737;text-align: left;padding: 8px;}
-      tr:nth-child(even) {background-color: #dddddd;}
-      div#copyIconContainer svg{width: 20px; height: 20px}
-      .chart-container {
-        position: relative;
-        margin: auto;
-        height: 300px; /* Adjust height as needed */
-        width: 90%;   /* Adjust width as needed */
-        margin-bottom: 30px;
-      }
-      #topKeysChart {
-        height: 400px;
-        width: 600px;
-      }
-  body
-    .container.mt-4
-        h1 Chatterbox Dashboard
-        h2 Application: #{appName}
+      //- div#copyIconContainer svg{width: 20px; height: 20px} // Can be w-5 h-5 in Tailwind
+  body(class="bg-gray-100 font-sans leading-normal tracking-normal")
+    .container(class="mx-auto p-4 md:p-8")
+        h1(class="text-3xl md:text-4xl font-bold text-gray-800 mb-2") Chatterbox Dashboard
+        h2(class="text-xl md:text-2xl text-gray-600 mb-6") Application: #{appName}
 
-        //- Navigation/Logout (Adapt from your existing layout)
-        .d-flex.justify-content-end.mb-3
-          //- Add New SecKey button if needed
-          a.btn.btn-secondary.me-2(href="/view/authorize") View SecKey
-          form(action="/view/logout", method="POST")
-            button.btn.btn-danger(type="submit") Logout
+        .flex.flex-col(class="sm:flex-row sm:justify-end sm:items-center mb-6 space-y-2 sm:space-y-0 sm:space-x-3")
+          a(href="/view/authorize" hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML" class="inline-block bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded shadow hover:shadow-md transition duration-150 ease-in-out no-underline text-center") New SecKey
+          button(hx-post=`/view/logout` hx-boost="true" class="bg-red-500 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded shadow hover:shadow-md transition duration-150 ease-in-out") Logout
 
-        hr
+        hr(class="border-t border-gray-300 my-6")
 
-        h3 Analytics Overview
+        h3(class="text-2xl font-semibold text-gray-700 mb-6") Analytics Overview
 
-        //- Chart Row 1
-        .row.mb-4
-          .col-md-6
-            h4 Log Volume Over Time
-            .chart-container
+        //- Chart Row 1 - Using Tailwind Grid
+        .grid(class="md:grid-cols-2 gap-8 mb-8")
+          div(class="bg-white p-6 rounded-lg shadow-lg")
+            h4(class="text-xl font-semibold text-gray-800 mb-4 text-center") Log Volume Over Time
+            //- Tailwind classes for chart container: responsive height, width
+            .chart-container(class="relative mx-auto w-full h-72 md:h-80") 
               canvas#logVolumeChart
-          .col-md-6
-            h4 Log Level Distribution
-            .chart-container(style="max-width: 350px;")
+          div(class="bg-white p-6 rounded-lg shadow-lg")
+            h4(class="text-xl font-semibold text-gray-800 mb-4 text-center") Log Level Distribution
+            //- Max width for pie chart consistency, responsive height
+            .chart-container(class="relative mx-auto w-full max-w-xs h-72 md:h-80") 
               canvas#logLevelDistributionChart
 
-        //- Chart Row 2
-        .row.mb-4
-          .col-md-6
-            h4 Top Log Keys
-            .chart-container
+        //- Chart Row 2 - Using Tailwind Grid
+        .grid(class="md:grid-cols-2 gap-8 mb-8")
+          div(class="bg-white p-6 rounded-lg shadow-lg")
+            h4(class="text-xl font-semibold text-gray-800 mb-4 text-center") Top Log Keys
+            //- Specific dimensions from original style, translated to common Tailwind sizes or use style attribute if exact px needed.
+            //- Original: height: 400px; width: 600px;
+            //- Tailwind: h-96 (384px), for width, can use w-full or max-w-xl/2xl depending on desired responsiveness
+            .chart-container(class="relative mx-auto w-full h-96") // Adjusted height
               canvas#topKeysChart
-          .col-md-6
-            h4 Error Rate Over Time
-            .chart-container
+          div(class="bg-white p-6 rounded-lg shadow-lg")
+            h4(class="text-xl font-semibold text-gray-800 mb-4 text-center") Error Rate Over Time
+            .chart-container(class="relative mx-auto w-full h-72 md:h-80")
               canvas#errorRateChart
-
-        //- Optional: Average Response Time Chart
-        //- .row.mb-4
-        //-   .col-md-6
-        //-     h4 Average Response Time
-        //-     .chart-container
-        //-       canvas#avgTimeChart
-
-        hr
+        hr(class="border-t border-gray-300 my-6")
 
     script.
       const chartData = !{JSON.stringify(chartData || {})};
     script(src="/js/analytics.js")
-      
-  
