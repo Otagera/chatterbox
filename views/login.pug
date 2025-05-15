@@ -2,8 +2,9 @@ doctype html
 html(lang='en')
   head
     title Chatterbox Dashboard - #{appName}
-    //- Removed Bootstrap CSS
-    script(src="https://cdn.tailwindcss.com") // Added Tailwind CSS
+    
+    //- script(src="https://cdn.tailwindcss.com")
+    link(href="/styles/style.css" rel="stylesheet" type='text/css')
     script(src='https://unpkg.com/htmx.org@1.5.0')
     //- Removed inline style for body padding
   body(class="bg-gray-100 min-h-screen flex items-center justify-center p-4")

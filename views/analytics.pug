@@ -2,11 +2,11 @@ doctype html
 html(lang='en')
   head
     title Chatterbox Dashboard - #{appName}
-    //- Removed Bootstrap CSS
-    script(src="https://cdn.tailwindcss.com") // Added Tailwind CSS
+    
+    //- script(src="https://cdn.tailwindcss.com")
+    link(href="/styles/style.css" rel="stylesheet" type='text/css')
     script(src='https://unpkg.com/htmx.org@1.5.0')
     script(src="https://cdn.jsdelivr.net/npm/chart.js")
-    script(src="https://cdn.jsdelivr.net/npm/@cubejs-client/core/dist/cubejs-client-core.umd.js")
     style.
       //- div#copyIconContainer svg{width: 20px; height: 20px} // Can be w-5 h-5 in Tailwind
   body(class="bg-gray-100 font-sans leading-normal tracking-normal")
