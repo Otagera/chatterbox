@@ -6,8 +6,10 @@ import { Log, AppKey, BaseEntity } from "./entities";
 dotenv.config();
 export default defineConfig({
 	entities: ["./dist/app/entities"],
+	entitiesTs: ["./entities"],
 	dbName: process.env.DB_NAME || "chatterbox",
 	highlighter: new MongoHighlighter(),
 	debug: true,
 	clientUrl: process.env.DB_URL || "mongodb://127.0.0.1:27017",
+	ensureIndexes: true,
 });

@@ -2,11 +2,16 @@ import { Entity, Index, Property } from "@mikro-orm/mongodb";
 import { BaseEntity } from "./BaseEntity";
 
 @Entity({ tableName: "log" })
+@Index({
+	name: "idx_search",
+	properties: ["name", "data", "key", "appName"],
+	type: "fulltext",
+})
+@Index({ properties: ["createdAt"], options: { expireAfterSeconds: 2592000 } }) // expires after 30 days
 export class Log extends BaseEntity {
 	@Property()
 	level: string;
 
-	@Index({ type: "fulltext" })
 	@Property()
 	name: string;
 
@@ -16,7 +21,6 @@ export class Log extends BaseEntity {
 	@Property()
 	time: Date;
 
-	@Index({ type: "fulltext" })
 	@Property({ nullable: true })
 	data?: Record<string, any> | string;
 
@@ -32,11 +36,9 @@ export class Log extends BaseEntity {
 	@Property({ nullable: true })
 	timeTaken?: string;
 
-	@Index({ type: "fulltext" })
 	@Property()
 	key: string;
 
-	@Index({ type: "fulltext" })
 	@Property()
 	appName: string;
 
