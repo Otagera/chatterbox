@@ -1048,7 +1048,7 @@ router.get("/view/apps", async (req: Request, res: Response) => {
               <label for="appNameInput" class="block text-sm font-medium text-gray-700 mb-1">Application Name</label>
               <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
-            <input type="number" name="expires" class="hidden" value="0" /> <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
+            <input type="number" name="expires" class="hidden" value="10" /> <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
           </form>
           <div id="newAppErrorMsg" class="mt-3"></div>
         </div>
@@ -1118,7 +1118,7 @@ router.post("/view/apps", async (req: Request, res: Response) => {
 								req.body.appName || ""
 							}" required />
             </div>
-            <input type="number" name="expires" class="hidden" value="0" />
+            <input type="number" name="expires" class="hidden" value="10" />
             <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
           </form>
           <div id="newAppErrorMsg" class="mt-3 text-red-500 text-sm">${message}</div>
