@@ -8,7 +8,7 @@ import session from "express-session";
 import MongoStore from "connect-mongo";
 
 import { ViewController, APIController } from "./app/controllers";
-import { initORM } from "./app/db";
+import { initORM, initORMOption } from "./app/db";
 
 dotenv.config();
 const app = express();
@@ -28,7 +28,7 @@ class PaginationState {
 export const paginationState = new PaginationState();
 
 export const init = (async () => {
-	const services = await initORM();
+	const services = await initORM(initORMOption);
 	app.use(express.json());
 	app.use(
 		session({
