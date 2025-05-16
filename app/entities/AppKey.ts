@@ -8,9 +8,9 @@ export enum AppKeyStatus {
 }
 
 @Entity({ tableName: "appKey" })
+@Unique({ properties: ["appName", "user"] })
 export class AppKey extends BaseEntity {
 	@Property()
-	@Unique()
 	appName: string;
 
 	@Property()

@@ -708,7 +708,6 @@ router.post("/view/search", async (req: Request, res: Response) => {
 			$lt?: Date;
 		};
 	} = { time: {}, appName: req.session.appName };
-	console.log("req.body", req.body);
 	if ("startDate" in req.body && req.body.startDate.length) {
 		if (filter.time) filter.time["$gte"] = new Date(req.body.startDate);
 	}
@@ -963,15 +962,8 @@ const getViewApps = async (
 	loginToken: string,
 	userEmail?: string
 ): Promise<string> => {
-	const app = await services.appKeys.findOne({
-		appName: appName as string,
-	});
-
-	if (!app) {
-		throw new Error("Application not found.");
-	}
 	const user = await services.users.findOne({
-		id: app.user.id,
+		email: userEmail,
 		loginToken: hashLogintoken(loginToken as string),
 	});
 
@@ -979,6 +971,14 @@ const getViewApps = async (
 		throw new Error(
 			"User authentication failed or user not found for this app."
 		);
+	const app = await services.appKeys.findOne({
+		appName: appName as string,
+		user,
+	});
+
+	if (!app) {
+		throw new Error("Application not found.");
+	}
 
 	await generateSaveAndSendOTP(user, appName);
 

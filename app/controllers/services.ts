@@ -24,7 +24,8 @@ export const generateSaveAndSendOTP = async (user: User, appName: string) => {
 	services.em.persist(otp);
 	await services.em.flush();
 
-	return sendOTP(generatedOTP, user.email, appName);
+	await sendOTP(generatedOTP, user.email, appName);
+	console.log("[generateSaveAndSendOTP] end");
 };
 
 // Add password to this cause the original idea was to be passwordless
@@ -129,18 +130,7 @@ export const authorizeService = async (params: Record<string, any>) => {
 	const existingAppKey = await services.appKeys.findOne({ appName, user });
 
 	if (existingAppKey) {
-		const appKeyIsActive =
-			existingAppKey.status === "active" && existingAppKey.expires > Date.now();
-
-		if (appKeyIsActive) {
-			throw new HTTPError({
-				statusCode: HTTP_STATUS_CODES.CONFLICT,
-				message: `Application: ${appName} has already been authorized`,
-			});
-		}
-
 		existingAppKey.token = hashedToken;
-		existingAppKey.expires = Date.now() + expires * 1000;
 	} else {
 		await createApplication({ email, appName, expires });
 	}

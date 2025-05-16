@@ -15,17 +15,19 @@ import constantsUtil from "../utils/constants.util";
 const { HTTP_STATUS_CODES } = constantsUtil;
 
 export const verifyService = async (params: {
-	appName?: string;
-	token?: string;
+	appName: string;
+	token: string;
+	email: string;
 }) => {
 	const spec = z
 		.object({
 			appName: z.string(),
 			token: z.string(),
+			email: z.string(),
 		})
 		.required();
 	type specType = z.infer<typeof spec>;
-	const { appName, token } = validateSpec<specType>(spec, params);
+	const { appName, token, email } = validateSpec<specType>(spec, params);
 
 	// Extract the appName and the public/private key data from the apiKey and token
 	const [typeApiSecret, _privateKeyHashWithChecksum] = token.split("_");
@@ -34,7 +36,9 @@ export const verifyService = async (params: {
 		throw new InvalidKeyError({});
 	}
 
-	const appKey = await services.appKeys.findOne({ appName });
+	const user = await services.users.findOne({ email });
+	const appKey = await services.appKeys.findOne({ appName, user });
+
 	if (!appKey) {
 		throw new AppNotFoundError({
 			message: `Application: ${appName} not found`,
@@ -85,14 +89,15 @@ export const authMiddleware = async (
 	res: Response,
 	next: NextFunction
 ) => {
-	const { user, appName } = req.session;
+	const { user, appName, email } = req.session;
 	try {
-		if (user) {
+		if (user && appName && email) {
 			let token = user;
 
 			const isTokenValid = await verifyService({
 				token,
 				appName,
+				email,
 			});
 
 			if (isTokenValid) {
@@ -100,11 +105,12 @@ export const authMiddleware = async (
 				return next();
 			}
 
-			throw new HTTPError({});
+			throw new HTTPError({ message: "Invalid Token" });
 		} else {
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
+		// Add error to redirect page
 		return res.send(`
         <html>
           <head>
@@ -112,7 +118,7 @@ export const authMiddleware = async (
             <script>
               setTimeout(() => {
                 window.location.href = '/login';
-              }, 3000); // Redirect after 3 seconds
+              }, 1000); // Redirect after 3 seconds
             </script>
           </head>
           <body>
