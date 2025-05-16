@@ -8,7 +8,7 @@ import {
 	InvalidKeyError,
 	OperationError,
 } from "../utils/error.util";
-import { services } from "../db";
+import { services } from "../config/db";
 import { hashKeys } from "../utils/security.util";
 import constantsUtil from "../utils/constants.util";
 

@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import Router from "express-promise-router";
 
 import { paginationState } from "../../index";
-import { services } from "../db";
+import { services } from "../config/db";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
 import { AppKey, Log } from "../entities";
@@ -980,7 +980,7 @@ const getViewApps = async (
 			"User authentication failed or user not found for this app."
 		);
 
-	await generateSaveAndSendOTP(user);
+	await generateSaveAndSendOTP(user, appName);
 
 	const displayEmail = userEmail || user.email;
 	const encodedAppName = encodeURIComponent(appName);

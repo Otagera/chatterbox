@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import Router from "express-promise-router";
 import { ZodError, z } from "zod";
 
-import { services } from "../db";
+import { services } from "../config/db";
 import { ILog } from "../interfaces";
 import { AppKeyStatus } from "../entities";
 import { HTTPError } from "../utils/error.util";
@@ -136,7 +136,7 @@ const sendLoginOTP = async (appName: string, loginToken: string) => {
 		loginToken: hashLogintoken(loginToken as string),
 	});
 	if (user) {
-		await generateSaveAndSendOTP(user);
+		await generateSaveAndSendOTP(user, appName);
 
 		return true;
 	}

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { queueServices } from "../queue/queue.service";
 
 export const generateOTP = (length = 6) => {
 	if (!Number.isInteger(length) || length <= 0) {
@@ -12,8 +13,16 @@ export const generateOTP = (length = 6) => {
 	return otp;
 };
 
-export const sendOTP = (otp: string, email: string) => {
+export const sendOTP = async (otp: string, email: string, appName: string) => {
 	console.log(`email: ${email} -> otp: ${otp}`);
+	return queueServices.emailQueueLib.addJob("sendOTPEmail", {
+		meta: {
+			email,
+			otp,
+			appName,
+		},
+		worker: "sendOTPEmail",
+	});
 };
 
 export const createChecksum = (appName: string) => {

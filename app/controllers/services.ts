@@ -10,7 +10,7 @@ import {
 	hashOTPs,
 	sendOTP,
 } from "../utils/security.util";
-import { services } from "../db";
+import { services } from "../config/db";
 import { AppKey, AppKeyStatus, OTP, User } from "../entities";
 import { HTTPError, NotFoundError } from "../utils/error.util";
 import constantsUtil from "../utils/constants.util";
@@ -18,13 +18,13 @@ import { IAppKey } from "../interfaces";
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 
-export const generateSaveAndSendOTP = async (user: User) => {
+export const generateSaveAndSendOTP = async (user: User, appName: string) => {
 	const generatedOTP = generateOTP();
 	const otp = new OTP(hashOTPs(generatedOTP), user);
 	services.em.persist(otp);
 	await services.em.flush();
-	// Simulate sending email
-	sendOTP(generatedOTP, user.email);
+
+	return sendOTP(generatedOTP, user.email, appName);
 };
 
 // Add password to this cause the original idea was to be passwordless

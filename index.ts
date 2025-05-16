@@ -6,13 +6,20 @@ import dotenv from "dotenv";
 import { RequestContext } from "@mikro-orm/mongodb";
 import session from "express-session";
 import MongoStore from "connect-mongo";
+import { createBullBoard } from "@bull-board/api";
+import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
+import { ExpressAdapter } from "@bull-board/express";
 
 import { ViewController, APIController } from "./app/controllers";
-import { initORM, initORMOption } from "./app/db";
+import { initORM, initORMOption } from "./app/config/db";
+import config from "./app/config/config";
+import QueueWorkersHandler from "./app/queue/queueWorkers.handler";
+import constants from "./app/config/constants";
+import { queueServices } from "./app/queue/queue.service";
 
 dotenv.config();
 const app = express();
-const PORT = process.env.PORT || 3005;
+const PORT = config.port;
 
 class PaginationState {
 	private currentCursor!: string | null;
@@ -29,6 +36,24 @@ export const paginationState = new PaginationState();
 
 export const init = (async () => {
 	const services = await initORM(initORMOption);
+
+	// For dashboard to virtually see queues and jobs
+	const serverAdapter = new ExpressAdapter();
+	serverAdapter.setBasePath("/worker/admin");
+	createBullBoard({
+		queues: [
+			new BullMQAdapter(queueServices.defaultQueueLib.getQueue()),
+			new BullMQAdapter(queueServices.emailQueueLib.getQueue()),
+		],
+		serverAdapter: serverAdapter,
+	});
+
+	// Starting the workers handlers
+	new QueueWorkersHandler(constants.BULL_QUEUE_NAMES.DEFAULT);
+	new QueueWorkersHandler(constants.BULL_QUEUE_NAMES.EMAIL);
+
+	// To make sure /worker/admin points to the bull queue dashboard
+	app.use("/worker/admin", serverAdapter.getRouter());
 	app.use(express.json());
 	app.use(
 		session({
@@ -37,9 +62,7 @@ export const init = (async () => {
 			saveUninitialized: true,
 			cookie: { maxAge: 6000000 },
 			store: MongoStore.create({
-				mongoUrl: `${process.env.DB_URL || "mongodb://127.0.0.1:27017"}/${
-					process.env.DB_NAME || "chatterbox"
-				}`,
+				mongoUrl: `${config.dbURL}/${config.dbName}`,
 			}),
 		})
 	);

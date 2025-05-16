@@ -1,17 +1,18 @@
 import dotenv from "dotenv";
 import { MikroORM, Options } from "@mikro-orm/mongodb";
 import { MongoHighlighter } from "@mikro-orm/mongo-highlighter";
-import { IServices } from "./interfaces";
-import { Log, AppKey, User, OTP } from "./entities";
+import { IServices } from "../interfaces";
+import { Log, AppKey, User, OTP } from "../entities";
+import config from "./config";
 
 dotenv.config();
 export const initORMOption = {
 	entities: ["./dist/app/entities"],
 	entitiesTs: ["./entities"],
-	dbName: process.env.DB_NAME || "chatterbox",
+	dbName: config.dbName,
 	highlighter: new MongoHighlighter(),
 	debug: true,
-	clientUrl: process.env.DB_URL || "mongodb://127.0.0.1:27017",
+	clientUrl: config.dbURL,
 	ensureIndexes: true,
 };
 
