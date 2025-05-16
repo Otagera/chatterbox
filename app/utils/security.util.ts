@@ -15,7 +15,7 @@ export const generateOTP = (length = 6) => {
 
 export const sendOTP = async (otp: string, email: string, appName: string) => {
 	console.log(`email: ${email} -> otp: ${otp}`);
-	return queueServices.emailQueueLib.addJob("sendOTPEmail", {
+	queueServices.emailQueueLib.addJob("sendOTPEmail", {
 		meta: {
 			email,
 			otp,

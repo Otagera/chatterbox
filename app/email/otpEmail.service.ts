@@ -18,7 +18,7 @@ export const otpEmail = async (
 	try {
 		const templatePath = path.join(
 			path.resolve(__dirname, "../../../views/email"),
-			`otp.pug`
+			`otp.ejs`
 		);
 		const contextObj = {
 			appName: data.appName,
@@ -30,7 +30,7 @@ export const otpEmail = async (
 			subject: `Your OTP to login into ${data.appName}`,
 			template: {
 				name: templatePath,
-				engine: "pug",
+				engine: "ejs",
 				context: contextObj,
 			},
 		};

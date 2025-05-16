@@ -9,7 +9,7 @@ const activationEmail = async (
 	try {
 		const templatePath = path.join(
 			path.resolve(__dirname, "../../../views/email"),
-			`welcome.pug`
+			`welcome.ejs`
 		);
 		const fullName = `${_.capitalize(data.firstName)} ${_.capitalize(
 			data.lastName
@@ -20,7 +20,7 @@ const activationEmail = async (
 			subject: `Hi ${fullName}, Activate Your Account`,
 			template: {
 				name: templatePath,
-				engine: "pug",
+				engine: "ejs",
 				context: contextObj,
 			},
 		};

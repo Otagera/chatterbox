@@ -25,7 +25,6 @@ export const generateSaveAndSendOTP = async (user: User, appName: string) => {
 	await services.em.flush();
 
 	await sendOTP(generatedOTP, user.email, appName);
-	console.log("[generateSaveAndSendOTP] end");
 };
 
 // Add password to this cause the original idea was to be passwordless
