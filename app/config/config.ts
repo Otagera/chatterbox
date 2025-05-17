@@ -21,6 +21,7 @@ const config = {
 		domain: process.env.MAILGUN_DOMAIN || "",
 		sender: process.env.MAILGUN_SENDER,
 	},
+	processEmails: process.env.PROCESS_EMAILS || false,
 };
 
 export default config;

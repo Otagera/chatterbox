@@ -70,17 +70,17 @@ export const apiVerifyService = async (params: {
 		throw new InvalidKeyError({});
 	}
 
-	const appKey = await services.appKeys.findOne({ appName });
+	const appKey = await services.appKeys.findOne({
+		appName,
+		apiSecret: hashKeys(apiSecret),
+	});
 	if (!appKey) {
 		throw new AppNotFoundError({
 			message: `Application: ${appName} not found`,
 		});
 	}
 
-	const recomputedPrivateKey = appKey.apiSecret;
-
-	// Check if the recomputed hashes match the original API key and secret
-	return hashKeys(apiSecret) === recomputedPrivateKey;
+	return appKey;
 };
 
 // middleware
@@ -149,10 +149,11 @@ export const apiAuthMiddleware = async (
 			if (isApiSecretValid) {
 				req.body.log.appName = appname;
 				req.appName = appname;
+				req.appKey = isApiSecretValid;
 				return next();
 			}
 
-			throw new HTTPError({});
+			throw new HTTPError({ message: "Invalid Token" });
 		} else {
 			throw new OperationError({ message: "Unauthorized request." });
 		}

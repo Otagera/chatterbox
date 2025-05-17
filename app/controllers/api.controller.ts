@@ -17,7 +17,6 @@ import { validateSpec } from "../utils/validate.util";
 import {
 	OTPService,
 	apiAuthorizeService,
-	authorizeService,
 	createApplication,
 	generateSaveAndSendOTP,
 	loginService,
@@ -50,7 +49,8 @@ router.post("/logs", apiAuthMiddleware, async (req: Request, res: Response) => {
 		type specType = z.infer<typeof spec>;
 		const log = validateSpec<specType>(spec, logParam);
 
-		const appKey = await services.appKeys.findOne({ appName: log.appName });
+		const appKey = req.appKey;
+
 		if (log.data && appKey?.appName) {
 			if (typeof log.data === "string") {
 				log.data = encrypt(log.data, appKey.appName);

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { queueServices } from "../queue/queue.service";
+import config from "../config/config";
 
 export const generateOTP = (length = 6) => {
 	if (!Number.isInteger(length) || length <= 0) {
@@ -15,14 +16,16 @@ export const generateOTP = (length = 6) => {
 
 export const sendOTP = async (otp: string, email: string, appName: string) => {
 	console.log(`email: ${email} -> otp: ${otp}`);
-	queueServices.emailQueueLib.addJob("sendOTPEmail", {
-		meta: {
-			email,
-			otp,
-			appName,
-		},
-		worker: "sendOTPEmail",
-	});
+	if (config.processEmails) {
+		queueServices.emailQueueLib.addJob("sendOTPEmail", {
+			meta: {
+				email,
+				otp,
+				appName,
+			},
+			worker: "sendOTPEmail",
+		});
+	}
 };
 
 export const createChecksum = (appName: string) => {
@@ -64,7 +67,17 @@ export const encryptObj = (obj: Record<string, any>, appId: string) =>
 export const decryptObj = (
 	ciphertext: string,
 	appId: string
-): Record<string, any> => JSON.parse(decrypt(ciphertext, appId));
+): Record<string, any> | string | undefined => {
+	const decrypted = decrypt(ciphertext, appId);
+	try {
+		const obj = JSON.parse(decrypted);
+		return obj;
+	} catch (error) {
+		if (error instanceof SyntaxError) {
+			return decrypted;
+		}
+	}
+};
 
 /**
  * Encrypts a given text using AES-256-CBC.
