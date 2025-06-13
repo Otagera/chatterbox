@@ -1,0 +1,16 @@
+.env
+/node_modules
+
+.DS_Store
+
+logQueue.json
+
+dist
+temp
+node_modules
+.idea
+dev.sqlite
+package-lock.json
+.env
+/.vscode
+.DS_Store
