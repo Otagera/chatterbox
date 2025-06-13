@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import Router from "express-promise-router";
 
+import fs from "fs";
+import path from "path";
+import { ZodError } from "zod";
+
 import { paginationState } from "../../index";
 import { services } from "../config/db";
 import { authMiddleware } from "../middlewares/auth.middleware";
@@ -15,10 +19,15 @@ import {
 	generateSaveAndSendOTP,
 	loginService,
 } from "./services";
-
-import fs from "fs";
-import path from "path";
-import { ZodError } from "zod";
+import {
+	LogLevelConfigItem,
+	LOG_LEVEL_CONFIG,
+	KNOWN_LEVEL_KEYS,
+	LevelKey,
+	LogVolumeAggregate,
+	ChartDataset,
+	ChartData,
+} from "../interfaces/IUtil";
 
 const svgPath = path.join(__dirname, "../../../views/assets/copy.svg");
 const svgContent = fs.readFileSync(svgPath, "utf8");
@@ -79,47 +88,6 @@ const getRecentLogs = async (appName: string, limit = 100) => {
 		let levelStyle = getLevelStyle(log.level);
 		return { ...log, id: log._id, levelStyle };
 	});
-};
-
-type LogLevelConfigItem = {
-	label: "Info" | "Warning" | "Error" | "Debug" | "Trace";
-	color: string;
-};
-
-const LOG_LEVEL_CONFIG: Record<string, LogLevelConfigItem> = {
-	info: { label: "Info", color: "rgba(54, 162, 235, 0.7)" },
-	warning: { label: "Warning", color: "rgba(255, 159, 64, 0.7)" },
-	error: { label: "Error", color: "rgba(255, 99, 132, 0.7)" },
-	debug: { label: "Debug", color: "rgba(75, 192, 192, 0.7)" },
-	trace: { label: "Trace", color: "rgba(100, 100, 255, 0.7)" },
-	// Add other levels if needed
-};
-
-const KNOWN_LEVEL_KEYS = Object.keys(LOG_LEVEL_CONFIG);
-
-type LevelKey = keyof typeof LOG_LEVEL_CONFIG; // "info" | "warning" | ...
-
-type LogVolumeAggregate = {
-	day: Date;
-	level: LevelKey;
-	logVolume: number;
-};
-
-type ChartDataset = {
-	label: LogLevelConfigItem["label"] | string; // Allow specific level labels or general labels like "Error Rate (%)"
-	data: number[];
-	backgroundColor?: string | string[];
-	borderColor?: string;
-	tension?: number;
-	borderWidth?: number;
-	axis?: "x" | "y"; // For bar charts if needed
-	fill?: boolean; // For line charts if needed
-	hoverOffset?: number;
-};
-
-type ChartData = {
-	labels: string[];
-	datasets: ChartDataset[];
 };
 
 /**
