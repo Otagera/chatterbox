@@ -1,0 +1,22 @@
+{
+	"name": "@chatterbox/chatterbox-sdk",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"start": "node example.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"colorette": "^2.0.20",
+		"dotenv": "^16.4.7",
+		"luxon": "^3.5.0",
+		"pino": "^9.6.0",
+		"pino-abstract-transport": "^2.0.0",
+		"pino-http": "^10.4.0",
+		"pino-pretty": "^13.0.0",
+		"sonic-boom": "^4.2.0"
+	}
+}
