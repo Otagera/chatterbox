@@ -1,75 +1,58 @@
-import { once } from "event";
-import { build } from "pino-abstract-transport";
-import SonicBoom from "sonic-boom";
-import ChatterboxSDK from "./index";
+import pinoAbstractTransport from "pino-abstract-transport";
+import ChatterboxSDK from "./index.js";
 
-const chatterbox = new ChatterboxSDK({
-	apiSecret: process.env.CHATTERBOX_API_SECRET,
-	appName: process.env.CHATTERBOX_APP_NAME,
-});
-
-//
-let queueFileWriter;
+const PINO_LEVEL_LABELS = {
+	60: "fatal",
+	50: "error",
+	40: "warn",
+	30: "info",
+	20: "debug",
+	10: "trace",
+};
 
 /**
- * Pino transport for sending logs directly to a custom HTTP destination (e.g., Chatterbox).
- * If HTTP sending fails, logs are added to an in-memory queue and then appended to a local file.
+ * Pino transport for sending logs to Chatterbox.
  *
- * @param {object} opts - Options for the transport.
- * @param {string} opts.apiUrl - The URL of your Chatterbox API.
- * @param {string} [opts.apiKey] - Optional API key for your Chatterbox API.
- * @param {string} opts.fallbackQueueFilePath - The path to the file for queuing failed logs.
+ * @param {object} opts - Options for the transport, passed from Pino configuration.
+ * @param {string} opts.appName - The application name.
+ * @param {string} opts.apiSecret - The API secret for authentication.
+ * @param {string} opts.fallbackQueueFilePath - Path for the fallback queue file.
  * @returns {Promise<import('pino-abstract-transport').Transport>} - A pino transport stream.
  */
 export default async function (opts) {
-	if (!opts.fallbackQueueFilePath) {
+	if (!opts.apiSecret || !opts.appName) {
 		throw new Error(
-			'Chatterbox transport: "fallbackQueueFilePath" option is required for queuing failed logs.'
+			'Chatterbox transport: "apiSecret" and "appName" options are required.'
 		);
 	}
 
-	// Initialize the queue file writer early
-	try {
-		await chatterbox.getQueueFileWriter(opts.fallbackQueueFilePath);
-	} catch (error) {
-		console.error("Failed to initialize queue file writer on startup:", error);
-		throw error;
-	}
+	const chatterbox = new ChatterboxSDK({
+		apiSecret: opts.apiSecret,
+		appName: opts.appName,
+		logFile: opts.fallbackQueueFilePath,
+	});
 
-	return build(
+	return pinoAbstractTransport(
 		async function (source) {
 			for await (const obj of source) {
-				const logData = obj;
-
-				// Attempt to send the log data via HTTP
-				const success = await chatterbox.sendLog(logData);
-
-				// If sending fails, queue the log to the file
-				if (!success) {
-					await chatterbox.queueLog(logData, opts.fallbackQueueFilePath);
+				if (typeof obj.level === "number") {
+					obj.level = PINO_LEVEL_LABELS[obj.level] || obj.level;
 				}
-
-				// NO SonicBoom.write() here for the primary log path.
-				// This transport's primary output is the HTTP call.
-				// The file writing is a secondary fallback mechanism.
+				const success = await chatterbox.sendLog(obj);
+				if (!success) {
+					chatterbox.queueLog(obj);
+				}
 			}
 		},
 		{
 			async close(err) {
 				if (err) {
-					console.error("Chatterbox HTTP transport closing due to error:", err);
-				} else {
-					console.log("Chatterbox HTTP transport finalizing.");
+					console.error(
+						"Chatterbox transport is closing due to an error:",
+						err
+					);
 				}
-
-				// Close the queue file writer if it exists
-				if (queueFileWriter) {
-					queueFileWriter.end();
-					await once(queueFileWriter, "close");
-					console.log("Queue file writer closed.");
-				}
-
-				console.log("Chatterbox HTTP transport closed.");
+				console.log("Chatterbox transport has closed.");
 			},
 		}
 	);
