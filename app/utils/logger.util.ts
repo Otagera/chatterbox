@@ -1,29 +1,23 @@
 import { randomUUID } from "node:crypto";
+import { Request, Response } from "express";
 import {
 	pino,
-	transport,
-	multistream,
-	DestinationStream,
 	LoggerOptions,
-	TransportMultiOptions,
 	Logger,
 	SerializedResponse,
 	SerializedRequest,
 } from "pino";
-import pinoPretty from "pino-pretty";
 import { pinoHttp } from "pino-http";
 import { green, isColorSupported } from "colorette";
 import { DateTime } from "luxon";
 import ChatterboxSDK from "@chatterbox/chatterbox-sdk";
-// import chatterboxTransport from ;
-import { ChatterboxConfigType, ChatterboxKey } from "../interfaces/IUtil";
-import { Writable } from "node:stream";
-import { Request, Response } from "express";
 
-const chatterbox = new ChatterboxSDK({
-	apiSecret: process.env.CHATTERBOX_API_SECRET || "",
-	appName: process.env.CHATTERBOX_APP_NAME || "",
-});
+import { ChatterboxConfigType, ChatterboxKey } from "../interfaces/IUtil";
+
+// const chatterbox = new ChatterboxSDK({
+// 	apiSecret: process.env.CHATTERBOX_API_SECRET || "",
+// 	appName: process.env.CHATTERBOX_APP_NAME || "",
+// });
 
 const config: ChatterboxConfigType = {
 	appName: process.env.CHATTERBOX_APP_NAME || "",
@@ -72,17 +66,13 @@ class PinoLogger {
 	_getDateFormat(date = new Date(), format = "dd-MM-yyyy HH:mm:ss") {
 		return DateTime.fromJSDate(date).setZone("system").toFormat(format);
 	}
+
 	_getPinoOptions(): LoggerOptions {
 		const transportConfig = this._getLogDestination();
 
 		return {
 			name: this._config.appName,
 			level: this._config.level,
-			// formatters: {
-			// 	level(label: string) {
-			// 		return { level: label };
-			// 	},
-			// },
 			base: undefined,
 			messageKey: this._config.messageKey,
 			errorKey: "error",
@@ -115,13 +105,11 @@ class PinoLogger {
 	_getLogDestination() {
 		const targets: any = [
 			{
-				// 1. Point to the new .mjs file
 				target: "@chatterbox/chatterbox-sdk/chatterboxTransport.mjs",
 				options: {
-					// 2. Pass the required options to the transport
 					appName: this._config.appName,
 					apiSecret: process.env.CHATTERBOX_API_SECRET,
-					fallbackQueueFilePath: "chatterbox-queue.log", // Or use a path from your config
+					fallbackQueueFilePath: "chatterbox-queue.json",
 				},
 			},
 		];
@@ -231,3 +219,6 @@ const logger = new PinoLogger({
 });
 
 logger.info({ test: "info" }, "exampleTest");
+setInterval(() => {
+	console.log("Running....");
+}, 2000);

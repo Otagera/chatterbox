@@ -6,10 +6,7 @@ const { green, isColorSupported } = require("colorette");
 const { DateTime } = require("luxon");
 
 const ChatterboxSDK = require("./index");
-// const chatterbox = new ChatterboxSDK({
-// 	apiSecret: process.env.CHATTERBOX_API_SECRET,
-// 	appName: process.env.CHATTERBOX_APP_NAME,
-// });
+
 const config = {
 	app_name: process.env.CHATTERBOX_APP_NAME,
 };
