@@ -4,6 +4,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 
 const config = require("./config");
+const path = require("path");
 
 /**
  * @typedef {Object} LogEntry
@@ -92,9 +93,10 @@ class ChatterboxSDK {
 		this.CHATTERBOX_API_SECRET = _options.apiSecret;
 
 		this.LOG_FILE = _options?.logFile || config.LOG_FILE;
+		const pathToLogFile = path.join(__dirname, "data", this.LOG_FILE);
 		try {
-			this.logQueue = fs.existsSync(this.LOG_FILE)
-				? JSON.parse(fs.readFileSync(this.LOG_FILE, "utf8"))
+			this.logQueue = fs.existsSync(pathToLogFile)
+				? JSON.parse(fs.readFileSync(pathToLogFile, "utf8"))
 				: [];
 		} catch (e) {
 			console.error(`Error reading log queue from ${this.LOG_FILE}:`, e);
@@ -112,6 +114,7 @@ class ChatterboxSDK {
 		);
 
 		setInterval(async () => {
+			console.log("this.logQueue", this.logQueue);
 			if (this.logQueue.length > 0) {
 				console.log(`Retrying ${this.logQueue.length} queued logs...`);
 
@@ -149,7 +152,7 @@ class ChatterboxSDK {
 	saveQueue = async () => {
 		try {
 			fs.writeFileSync(
-				this.LOG_FILE,
+				path.join(__dirname, "data", this.LOG_FILE),
 				JSON.stringify(this.logQueue, null, 2),
 				"utf8"
 			);
