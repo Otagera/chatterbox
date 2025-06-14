@@ -16,7 +16,7 @@ import config from "./app/config/config";
 import QueueWorkersHandler from "./app/queue/queueWorkers.handler";
 import constants from "./app/config/constants";
 import { queueServices } from "./app/queue/queue.service";
-import "./app/utils/logger.util";
+// import "./app/utils/logger.util";
 
 dotenv.config();
 const app = express();

@@ -1,7 +1,9 @@
+require("dotenv");
 const stream = require("stream");
 const fs = require("fs");
 const crypto = require("crypto");
-const config = require("./config"); // Assuming config.js exists
+
+const config = require("./config");
 
 /**
  * @typedef {Object} LogEntry
@@ -123,7 +125,6 @@ class ChatterboxSDK {
 						.map((log) => log.data);
 					const success = await this.sendLogs(nextBatchToSend);
 					if (!success) {
-						// If bulk failed, re-queue individual logs from the batch
 						nextBatchToSend.forEach((logData) => this.queueLog(logData));
 					}
 				}
@@ -132,7 +133,7 @@ class ChatterboxSDK {
 				for (const logEntry of unsentLogs) {
 					const success = await this.sendLog(logEntry.data);
 					if (!success) {
-						this.queueLog(logEntry.data); // Re-queue if sending failed
+						this.queueLog(logEntry.data);
 					}
 				}
 			}
@@ -140,15 +141,23 @@ class ChatterboxSDK {
 	}
 
 	/**
-	 * Saves the current log queue to the configured log file.
+	 * Saves the current log queue to the configured log file by overwriting it.
+	 * This replaces the need for getQueueFileWriter.
 	 * @private
 	 * @returns {Promise<void>}
 	 */
 	saveQueue = async () => {
 		try {
-			await getQueueFileWriter(this.LOG_FILE);
+			fs.writeFileSync(
+				this.LOG_FILE,
+				JSON.stringify(this.logQueue, null, 2),
+				"utf8"
+			);
 		} catch (e) {
-			console.error(`Error saving log queue to ${this.LOG_FILE}:`, e);
+			console.error(
+				`[ChatterboxSDK] Error saving log queue to ${this.LOG_FILE}:`,
+				e
+			);
 		}
 	};
 
@@ -186,7 +195,8 @@ class ChatterboxSDK {
 				console.error(
 					`Failed to send log. API responded with status: ${response.status}`
 				);
-				return false;
+				const errorText = await response.text();
+				throw new Error(errorText);
 			}
 
 			console.log("Log sent successfully");
@@ -250,8 +260,9 @@ class ChatterboxSDK {
 	};
 
 	/**
-	 * Adds a log entry to the in-memory queue and saves the queue to file.
-	 * Avoids adding duplicates based on log content hash.
+	 * Adds a log entry to the in-memory queue and persists the queue to the file.
+	 * It now correctly gets the existing array (which is already in memory),
+	 * pushes a new log, and saves the updated array back to the file.
 	 * @param {any} logData - The log entry data to queue.
 	 * @returns {Promise<void>}
 	 */
@@ -261,30 +272,12 @@ class ChatterboxSDK {
 
 		if (!exists) {
 			this.logQueue.push({ id: logId, data: logData });
+
 			await this.saveQueue();
-			console.log(`Log queued: ${logId}`);
 
-			try {
-				// Append the new log entry to the file immediately
-				const writer = await this.getQueueFileWriter(fallbackQueueFilePath);
-				const logLine = JSON.stringify(logData) + "\n";
-				const toDrain = !writer.write(logLine);
-
-				if (toDrain) {
-					await once(writer, "drain");
-				}
-				// console.log(`Log queued to file: ${logId}`); // Avoid excessive console.log in prod
-			} catch (error) {
-				console.error(`Failed to write log ${logId} to queue file:`, error);
-				// If writing to the queue file fails, you might want another fallback here
-				// (e.g., log to console as a last resort, or use process.stderr)
-				console.error(
-					`LAST RESORT: Failed to queue log ${logId}`,
-					JSON.stringify(logData)
-				);
-			}
-		} else {
-			console.log(`Log already in queue, skipping: ${logId}`);
+			console.log(
+				`[ChatterboxSDK] Log queued: ${logId}. Queue size: ${this.logQueue.length}`
+			);
 		}
 	};
 
@@ -296,30 +289,6 @@ class ChatterboxSDK {
 	 */
 	queueLogs = (logs) => {
 		logs.forEach((logData) => this.queueLog(logData));
-	};
-
-	/**
-	 * Initializes or gets the SonicBoom instance for writing queued logs.
-	 * @param {string} filePath - The path to the file where queued logs should be written.
-	 * @returns {Promise<SonicBoom>}
-	 */
-	getQueueFileWriter = async (filePath) => {
-		if (!this.queueFileWriter || this.queueFilePath !== filePath) {
-			if (this.queueFileWriter) {
-				// If path changed or old instance exists, close it first
-				this.queueFileWriter.end();
-				await once(this.queueFileWriter, "close");
-			}
-			this.queueFileWriter = new SonicBoom({
-				dest: filePath,
-				sync: false, // Async writing for performance
-				append: true, // Append to the file if it exists
-			});
-			queueFilePath = filePath;
-			await once(this.queueFileWriter, "ready");
-			console.log(`Initialized queue log file writer to: ${filePath}`);
-		}
-		return this.queueFileWriter;
 	};
 
 	/**

@@ -4,7 +4,8 @@
 	"description": "",
 	"main": "index.js",
 	"scripts": {
-		"start": "node example.js"
+		"start": "node example.js",
+		"prepare": "tsc  chatterboxTransport.mjs --declaration --emitDeclarationOnly --allowJs"
 	},
 	"keywords": [],
 	"author": "",

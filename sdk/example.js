@@ -1,17 +1,15 @@
+require("dotenv");
 const { randomUUID } = require("node:crypto");
-const { pino, transport, multistream } = require("pino");
-const pinoPretty = require("pino-pretty");
+const { pino } = require("pino");
 const { pinoHttp } = require("pino-http");
 const { green, isColorSupported } = require("colorette");
 const { DateTime } = require("luxon");
 
 const ChatterboxSDK = require("./index");
-
-const chatterbox = new ChatterboxSDK({
-	apiSecret: process.env.CHATTERBOX_API_SECRET,
-	appName: process.env.CHATTERBOX_APP_NAME,
-});
-
+// const chatterbox = new ChatterboxSDK({
+// 	apiSecret: process.env.CHATTERBOX_API_SECRET,
+// 	appName: process.env.CHATTERBOX_APP_NAME,
+// });
 const config = {
 	app_name: process.env.CHATTERBOX_APP_NAME,
 };
@@ -21,7 +19,7 @@ class PinoLogger {
 
 	constructor(_config) {
 		this._config = _config;
-		const pinoLogger = pino(this._getPinoOptions(), this._getLogDestination());
+		const pinoLogger = pino(this._getPinoOptions());
 		this.httpLoggerInstance = pinoHttp(this._getPinoHttpOptions(pinoLogger));
 	}
 
@@ -59,18 +57,17 @@ class PinoLogger {
 	_getDateFormat(date = new Date(), format = "dd-MM-yyyy HH:mm:ss") {
 		return DateTime.fromJSDate(date).setZone("system").toFormat(format);
 	}
+
 	_getPinoOptions() {
+		const transportConfig = this._getLogDestination();
+
 		return {
 			name: this._config.appName,
 			level: this._config.level,
-			formatters: {
-				level(label) {
-					return { level: label };
-				},
-			},
 			base: undefined,
 			messageKey: this._config.messageKey,
 			errorKey: "error",
+			transport: transportConfig,
 		};
 	}
 
@@ -97,36 +94,39 @@ class PinoLogger {
 	}
 
 	_getLogDestination() {
-		const streams = [chatterbox.getCustomStream()];
+		const targets = [
+			{
+				target: "./chatterboxTransport.mjs",
+				options: {
+					appName: this._config.appName,
+					apiSecret: process.env.CHATTERBOX_API_SECRET,
+				},
+			},
+		];
 
 		if (this._config.enableConsoleLogs) {
-			streams.push({
-				level: "trace",
-				stream: pinoPretty({
+			targets.push({
+				target: "pino-pretty",
+				options: {
 					colorize: true,
 					colorizeObjects: true,
 					messageKey: this._config.messageKey,
 					ignore: "pid,hostname,name",
 					singleLine: process.env.NODE_ENV === "development",
 					translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
-					messageFormat: (log, messageKey) => {
-						const message = log[String(messageKey)];
-
-						return `[${this._config.appName}] ${message}`;
-					},
 					customColors: {
-						trace: "green",
 						info: "green",
 						warn: "yellow",
 						trace: "gray",
 						fatal: "red",
 					},
-				}),
+				},
 			});
 		}
-		console.log("streams", streams);
 
-		return multistream(streams);
+		return {
+			targets: targets,
+		};
 	}
 
 	_getPinoHttpOptions(logger) {
@@ -209,3 +209,18 @@ const logger = new PinoLogger({
 });
 
 logger.info("info", "example-test");
+logger.info({ test: "info" }, "exampleTest");
+console.log("Sending a test log message...");
+logger.info(
+	{ details: "This log is sent via the transport worker." },
+	"EXAMPLE_LOG"
+);
+
+setTimeout(() => {
+	logger.info("info", "example-test");
+	console.log("\n .Example finished.");
+}, 5000);
+
+setInterval(() => {
+	console.log("Running....");
+}, 2000);

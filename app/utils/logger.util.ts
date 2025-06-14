@@ -113,37 +113,20 @@ class PinoLogger {
 	}
 
 	_getLogDestination() {
-		// const streams: Writable[] = [chatterbox.getCustomStream()];
-		// const streams: DestinationStream[] = [chatterbox.getCustomStream()];
-		const targets = [
+		const targets: any = [
 			{
-				target: "@chatterbox/chatterbox-sdk/chatterboxTransport.js",
-				options: {},
+				// 1. Point to the new .mjs file
+				target: "@chatterbox/chatterbox-sdk/chatterboxTransport.mjs",
+				options: {
+					// 2. Pass the required options to the transport
+					appName: this._config.appName,
+					apiSecret: process.env.CHATTERBOX_API_SECRET,
+					fallbackQueueFilePath: "chatterbox-queue.log", // Or use a path from your config
+				},
 			},
 		];
 
 		if (this._config.enableConsoleLogs) {
-			// targets.push({
-			// 	stream: pinoPretty({
-			// 		colorize: true,
-			// 		colorizeObjects: true,
-			// 		messageKey: this._config.messageKey,
-			// 		ignore: "pid,hostname,name",
-			// 		singleLine: process.env.NODE_ENV === "development",
-			// 		translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
-			// 		messageFormat: (log, messageKey) => {
-			// 			const message = log[String(messageKey)];
-
-			// 			return `[${this._config.appName}] ${message}`;
-			// 		},
-			// 		customColors: {
-			// 			info: "green",
-			// 			warn: "yellow",
-			// 			trace: "gray",
-			// 			fatal: "red",
-			// 		},
-			// 	}),
-			// });
 			targets.push({
 				target: "pino-pretty",
 				options: {
@@ -153,11 +136,6 @@ class PinoLogger {
 					ignore: "pid,hostname,name",
 					singleLine: process.env.NODE_ENV === "development",
 					translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
-					// messageFormat: (log: any, messageKey: any) => {
-					// 	const message = log[String(messageKey)];
-
-					// 	return `[${this._config.appName}] ${message}`;
-					// },
 					customColors: {
 						info: "green",
 						warn: "yellow",
@@ -252,4 +230,4 @@ const logger = new PinoLogger({
 	enableConsoleLogs: true,
 });
 
-logger.info("info", "example-test");
+logger.info({ test: "info" }, "exampleTest");
