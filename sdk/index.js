@@ -3,6 +3,7 @@ const stream = require("stream");
 const fs = require("fs");
 const crypto = require("crypto");
 const net = require("net");
+const os = require("os");
 
 const config = require("./config");
 const path = require("path");
@@ -420,7 +421,7 @@ class ChatterboxSDK {
  * @returns {net.Server} The Node.js `net.Server` instance.
  */
 const startChatterboxServer = (options) => {
-	const socketPath = path.join(__dirname, "chatterbox.sock");
+	const socketPath = path.join(os.tmpdir(), "chatterbox.sock");
 
 	if (fs.existsSync(socketPath)) {
 		fs.unlinkSync(socketPath);
