@@ -11,6 +11,7 @@ import {
 import { services } from "../config/db";
 import { hashKeys } from "../utils/security.util";
 import constantsUtil from "../utils/constants.util";
+import { ILog } from "../interfaces";
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 
@@ -147,7 +148,13 @@ export const apiAuthMiddleware = async (
 			});
 
 			if (isApiSecretValid) {
-				req.body.log.appName = appname;
+				if (req.body.log) {
+					req.body.log.appName = appname;
+				} else if (req.body.logs) {
+					req.body.logs.forEach(
+						(log: ILog) => (log.appName = appname as string)
+					);
+				}
 				req.appName = appname;
 				req.appKey = isApiSecretValid;
 				return next();

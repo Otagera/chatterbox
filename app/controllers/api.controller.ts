@@ -24,6 +24,19 @@ import {
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 const router = Router();
+const logSpec = z.object({
+	level: z.string(),
+	name: z.string(),
+	context: z.object({}).optional(),
+	time: z.union([z.date(), z.number()]),
+	data: z.union([z.record(z.any()), z.string()]).optional(),
+	traceId: z.string().optional(),
+	request: z.string().optional(),
+	response: z.string().optional(),
+	timeTaken: z.string().optional(),
+	key: z.string(),
+	appName: z.string(),
+});
 
 /**
  * @route POST /logs
@@ -33,22 +46,8 @@ const router = Router();
 router.post("/logs", apiAuthMiddleware, async (req: Request, res: Response) => {
 	try {
 		const logParam = req.body?.log;
-		const spec = z.object({
-			level: z.string(),
-			name: z.string(),
-			context: z.object({}).optional(),
-			time: z.union([z.date(), z.number()]),
-			data: z.union([z.record(z.any()), z.string()]).optional(),
-			traceId: z.string().optional(),
-			request: z.string().optional(),
-			response: z.string().optional(),
-			timeTaken: z.string().optional(),
-			key: z.string(),
-			appName: z.string(),
-		});
-		type specType = z.infer<typeof spec>;
-		const log = validateSpec<specType>(spec, logParam);
-
+		type specType = z.infer<typeof logSpec>;
+		const log = validateSpec<specType>(logSpec, logParam);
 		const appKey = req.appKey;
 
 		if (log.data && appKey?.appName) {
@@ -61,9 +60,9 @@ router.post("/logs", apiAuthMiddleware, async (req: Request, res: Response) => {
 
 		services.logs.create(log as ILog);
 		await services.em.flush();
-		res
+		return res
 			.status(HTTP_STATUS_CODES.OK)
-			.json({ success: true, message: "Logged succesfully" });
+			.json({ success: true, message: "Logged successfully" });
 	} catch (error) {
 		if (error instanceof HTTPError) {
 			return res.status(error?.statusCode).json({
@@ -88,14 +87,52 @@ router.post("/logs", apiAuthMiddleware, async (req: Request, res: Response) => {
  * @route POST /logs/bulk
  * @description Creates multiple log entries from an array of logs.
  */
-router.post("/logs/bulk", async (req: Request, res: Response) => {
-	const logs: ILog[] = req.body?.logs;
-	logs.forEach((log) => {
-		services.logs.create(log);
-	});
-	await services.em.flush();
-	res.status(HTTP_STATUS_CODES.OK).json({ success: true });
-});
+router.post(
+	"/logs/bulk",
+	apiAuthMiddleware,
+	async (req: Request, res: Response) => {
+		try {
+			const logsParam = req.body?.logs;
+			const logsSpec = z.array(logSpec);
+			type specType = z.infer<typeof logsSpec>;
+			const logs = validateSpec<specType>(logsSpec, logsParam);
+
+			const appKey = req.appKey;
+
+			logs.forEach((log) => {
+				if (log.data && appKey?.appName) {
+					if (typeof log.data === "string") {
+						log.data = encrypt(log.data, appKey.appName);
+					} else {
+						log.data = encryptObj(log.data, appKey.appName);
+					}
+				}
+				services.logs.create(log as ILog);
+			});
+			await services.em.flush();
+			return res
+				.status(HTTP_STATUS_CODES.OK)
+				.json({ success: true, message: "Bulk Log successfully" });
+		} catch (error) {
+			if (error instanceof HTTPError) {
+				return res.status(error?.statusCode).json({
+					success: false,
+					message: error?.message,
+				});
+			} else if (error instanceof ZodError) {
+				return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+					success: false,
+					message: JSON.parse(error?.message),
+				});
+			} else {
+				return res.status(HTTP_STATUS_CODES.BAD_REQUEST).json({
+					success: false,
+					message: "Invalid API secret",
+				});
+			}
+		}
+	}
+);
 
 /**
  * @route POST /users/login
