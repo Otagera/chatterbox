@@ -115,7 +115,18 @@ class ChatterboxSDK {
 		this.CHATTERBOX_API_SECRET = _options.apiSecret;
 
 		this.LOG_FILE = _options?.logFile || config.LOG_FILE;
-		const pathToLogFile = path.join(__dirname, "data", this.LOG_FILE);
+
+		const dataDirPath = path.join(__dirname, "data");
+
+		if (!fs.existsSync(dataDirPath)) {
+			console.log(
+				`[ChatterboxSDK] Data directory not found. Creating it at: ${dataDirPath}`
+			);
+
+			fs.mkdirSync(dataDirPath, { recursive: true });
+		}
+
+		const pathToLogFile = path.join(dataDirPath, this.LOG_FILE);
 
 		// Load existing queued logs from file
 		try {
