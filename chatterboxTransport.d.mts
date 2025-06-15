@@ -1,14 +1,13 @@
 /**
- * Pino transport for sending logs to Chatterbox.
+ * Creates a writable stream for Pino to transport logs to a Chatterbox logging server via a Unix domain socket.
  *
- * @param {object} opts - Options for the transport, passed from Pino configuration.
- * @param {string} opts.appName - The application name.
- * @param {string} opts.apiSecret - The API secret for authentication.
- * @param {string} opts.fallbackQueueFilePath - Path for the fallback queue file.
- * @returns {Promise<import('pino-abstract-transport').Transport>} - A pino transport stream.
+ * This function is designed to be used as a Pino transport. It establishes a connection
+ * to a Unix domain socket located at `chatterbox.sock` in the same directory as this module.
+ *
+ * Connection errors are handled to prevent the transport process from crashing if the
+ * Chatterbox server is not running.
+ *
+ * @param {object} opts - Options passed by Pino (currently not used in this transport but required by Pino's API).
+ * @returns {Promise<net.Socket>} A Promise that resolves to a `net.Socket` (a Duplex stream), which Pino will use as a writable stream for logs.
  */
-export default function _default(opts: {
-    appName: string;
-    apiSecret: string;
-    fallbackQueueFilePath: string;
-}): Promise<import("pino-abstract-transport").Transport>;
+export default function _default(opts: object): Promise<net.Socket>;
