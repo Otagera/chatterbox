@@ -1,10 +1,8 @@
 import net from "net";
 import path from "path";
-import { fileURLToPath } from "url";
+import os from "os";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const socketPath = path.join(__dirname, "chatterbox.sock");
+const socketPath = path.join(os.tmpdir(), "chatterbox.sock");
 
 /**
  * Creates a writable stream for Pino to transport logs to a Chatterbox logging server via a Unix domain socket.

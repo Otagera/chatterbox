@@ -5,6 +5,7 @@
 	"main": "index.js",
 	"scripts": {
 		"start": "node example.js",
+		"dev": "nodemon example.js --ignore data/",
 		"prepare": "tsc  chatterboxTransport.mjs --declaration --emitDeclarationOnly --allowJs"
 	},
 	"keywords": [],
