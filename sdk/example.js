@@ -4,8 +4,13 @@ const { pino } = require("pino");
 const { pinoHttp } = require("pino-http");
 const { green, isColorSupported } = require("colorette");
 const { DateTime } = require("luxon");
+const { startChatterboxServer } = require("./index");
 
-const ChatterboxSDK = require("./index");
+startChatterboxServer({
+	appName: process.env.CHATTERBOX_APP_NAME,
+	apiSecret: process.env.CHATTERBOX_API_SECRET,
+	logFile: "chatterbox-queue.json",
+});
 
 const config = {
 	app_name: process.env.CHATTERBOX_APP_NAME,
@@ -217,7 +222,3 @@ setTimeout(() => {
 	logger.info("info", "example-test");
 	console.log("\n .Example finished.");
 }, 5000);
-
-setInterval(() => {
-	console.log("Running....");
-}, 2000);

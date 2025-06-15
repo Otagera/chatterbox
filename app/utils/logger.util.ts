@@ -10,14 +10,15 @@ import {
 import { pinoHttp } from "pino-http";
 import { green, isColorSupported } from "colorette";
 import { DateTime } from "luxon";
-import ChatterboxSDK from "@chatterbox/chatterbox-sdk";
+import { startChatterboxServer } from "@chatterbox/chatterbox-sdk";
 
 import { ChatterboxConfigType, ChatterboxKey } from "../interfaces/IUtil";
 
-// const chatterbox = new ChatterboxSDK({
-// 	apiSecret: process.env.CHATTERBOX_API_SECRET || "",
-// 	appName: process.env.CHATTERBOX_APP_NAME || "",
-// });
+startChatterboxServer({
+	appName: process.env.CHATTERBOX_APP_NAME,
+	apiSecret: process.env.CHATTERBOX_API_SECRET,
+	logFile: "chatterbox-queue.json",
+});
 
 const config: ChatterboxConfigType = {
 	appName: process.env.CHATTERBOX_APP_NAME || "",
@@ -219,6 +220,6 @@ const logger = new PinoLogger({
 });
 
 logger.info({ test: "info" }, "exampleTest");
-setInterval(() => {
-	console.log("Running....");
-}, 2000);
+// setInterval(() => {
+// 	console.log("Running....");
+// }, 2000);
