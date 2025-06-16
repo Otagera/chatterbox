@@ -2,7 +2,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { Job, Worker } from "bullmq";
 import { queueConnectionConfig } from "./queue.service";
-// import logger from "@utils/logger.util";
+import logger from "../utils/logger.util";
 
 // The handler class that is instantiated for each queue, with this handler,
 // it runs the worker when the worker server has started.
@@ -26,25 +26,15 @@ class WorkersHandler {
 	}
 
 	onCompleted(job: Job) {
-		// logger.info([this._queueName, job], `JOB-WORKER-COMPLETED-${job?.id}`);
-		console.log(
-			`Worker: ${this._queueName} - Job ${job.id} has completed with result ${job.returnvalue}`
-		);
+		logger.info([this._queueName, job], `JOB-WORKER-COMPLETED-${job?.id}`);
 	}
 
 	onFailed(job: Job | undefined, error: Error) {
-		// logger.error([this._queueName, job, error], `JOB-WORKER-ERROR-${job?.id}`);
-		console.log(`Worker: ${this._queueName} - Job ${job?.id} has failed.`);
+		logger.error([this._queueName, job, error], `JOB-WORKER-ERROR-${job?.id}`);
 	}
 
 	async process(job: Job) {
-		// logger.log(
-		//   [this._queueName, job],
-		//   `JOB-WORKER-PROCESSED-COMPLETED-${job?.id}`
-		// );
-		console.log(
-			`Processing job ${job.id} with bull worker ${job.data.worker}.`
-		);
+		logger.log(`JOB-WORKER-PROCESSED-COMPLETED-${job?.id}`);
 		try {
 			const handlersFilePath = `${__dirname}${path.sep}workers`;
 			const handlers = fs.readdirSync(handlersFilePath);
@@ -59,7 +49,10 @@ class WorkersHandler {
 				throw new Error("Invalid worker sent");
 			}
 		} catch (error) {
-			console.log(error);
+			logger.error(
+				[this._queueName, job, error],
+				`JOB-WORKER-PROCESSED-ERROR-${job?.id}`
+			);
 		}
 	}
 }

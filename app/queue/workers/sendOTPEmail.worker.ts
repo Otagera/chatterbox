@@ -1,4 +1,5 @@
 import { otpEmail } from "../../email/otpEmail.service";
+import logger from "../../utils/logger.util";
 
 /**
  * Send email with otp
@@ -21,6 +22,7 @@ const run = async (data: {
 
 		return { status: "Success", message: `Successfully sent OTP email`, email };
 	} catch (error: any) {
+		logger.error(error, "OTP_EMAIL_FAILED");
 		throw error;
 	}
 };

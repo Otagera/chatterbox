@@ -68,6 +68,7 @@ const getLevelStyle = (level: string): string => {
 
 // Helper for consistent error message styling
 const renderError = (message: string): string => {
+	logger.error(message, "UI_RENDER_ERROR")
 	return `<div class="my-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md shadow-sm">
             <p class="font-medium">Error:</p>
             <p>${message}</p>
@@ -612,7 +613,7 @@ router.get(
 				} catch (decryptionError) {
 					logger.warn(
 						`Failed to decrypt log data for log ID ${id}: ${decryptionError}`,
-						"DECRYPTION-ERROR"
+						"LOG_DECRYPTION_FAILED"
 					);
 					decryptedData = {
 						decryption_error: "Could not decrypt data.",
@@ -648,13 +649,13 @@ router.get(
 						)}</pre>
           </div>
         `
-			); // Using max-w-2xl, whitespace-pre-wrap, break-words
+			);
 		} catch (error: any) {
 			const message =
 				error instanceof ZodError
 					? error.errors[0].message
 					: error?.message || "Something went wrong fetching log data!!!";
-			return res.status(500).send(renderError(message)); // Send styled error
+			return res.status(500).send(renderError(message));
 		}
 	}
 );
@@ -863,6 +864,7 @@ router.post("/view/login", async (req: Request, res: Response) => {
         </div>
       </div>
     `;
+		logger.info({ email }, "UI_LOGIN_INITIATED")
 		return res.send(appsHTML);
 	} catch (error: any) {
 		let errorMessage = "Login failed. Please try again.";
@@ -1325,12 +1327,15 @@ router.post("/view/otp", async (req: Request, res: Response) => {
 			appName: req.query.appName as string,
 		});
 
+		logger.info({ email: req.session.email, appName }, "UI_OTP_VERIFICATION_SUCCESS")
+
 		req.session.user = token;
 		req.session.appName = appName;
 
 		res.setHeader("HX-Redirect", "/");
 		res.send();
 	} catch (error: any) {
+		logger.warn({ email: req.session.email, error }, "UI_OTP_VERIFICATION_FAILED")
 		let errorMessage = "OTP verification failed. Please try again.";
 		if (error instanceof ZodError) {
 			errorMessage = error.errors.map((e) => e.message).join(", ");
@@ -1358,7 +1363,7 @@ router.post("/view/otp", async (req: Request, res: Response) => {
         <div id="otpErrorMsg" class="mt-3 text-red-500 text-sm p-2 bg-red-50 rounded-md border border-red-200">${errorMessage}</div>
       </div>
     `;
-		return res.status(401).send(otpFormWithErrorHTML); // 401 Unauthorized or 400 Bad Request
+		return res.status(401).send(otpFormWithErrorHTML); 
 	}
 });
 
@@ -1399,6 +1404,7 @@ router.get("/view/authorize", async (req: Request, res: Response) => {
         <span id="copyFeedback-${appName}" class="text-xs text-green-600 mt-1 h-4 block"></span>
       </div>
     `;
+		logger.warn({ appName, email }, "UI_APP_DELETION_SUCCESS")
 		return res.send(apiKeyDisplayHTML);
 	} catch (error: any) {
 		const message =

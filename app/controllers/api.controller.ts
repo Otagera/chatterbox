@@ -20,6 +20,7 @@ import {
 	generateSaveAndSendOTP,
 	loginService,
 } from "./services";
+import logger from "../utils/logger.util";
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 const router = Router();
@@ -82,10 +83,15 @@ router.post("/logs", apiAuthMiddleware, async (req: Request, res: Response) => {
 
 		services.logs.create(log as ILog);
 		await services.em.flush();
+		logger.info({ appName: appKey?.appName }, "LOG_INGESTION_SUCCESS");
 		return res
 			.status(HTTP_STATUS_CODES.OK)
 			.json({ success: true, message: "Logged successfully" });
 	} catch (error) {
+		logger.error(
+			{ appName: req.appKey?.appName, error },
+			"LOG_INGESTION_FAILED"
+		);
 		if (error instanceof HTTPError) {
 			return res.status(error?.statusCode).json({
 				success: false,
@@ -132,10 +138,19 @@ router.post(
 				services.logs.create(log as ILog);
 			});
 			await services.em.flush();
+
+			logger.info(
+				{ appName: appKey?.appName, count: logs.length },
+				"BULK_LOG_INGESTION_SUCCESS"
+			);
 			return res
 				.status(HTTP_STATUS_CODES.OK)
 				.json({ success: true, message: "Bulk Log successfully" });
 		} catch (error) {
+			logger.error(
+				{ appName: req.appKey?.appName, error },
+				"BULK_LOG_INGESTION_FAILED"
+			);
 			if (error instanceof HTTPError) {
 				return res.status(error?.statusCode).json({
 					success: false,
@@ -164,6 +179,7 @@ router.post(
 router.post("/users/login", async (req: Request, res: Response) => {
 	try {
 		const { email, existingApps, loginToken } = await loginService(req.body);
+		logger.info({ email }, "API_LOGIN_INITIATED");
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
 			message: `User: ${email} OTP sent successfully`,
@@ -171,6 +187,10 @@ router.post("/users/login", async (req: Request, res: Response) => {
 			existingApps,
 		});
 	} catch (error) {
+		logger.error(
+			{ email: req.body.email, error },
+			"API_LOGIN_INITIATION_FAILED"
+		);
 		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
 			success: false,
 			message: `Application has not been authorized successfully`,
@@ -210,6 +230,7 @@ router.post("/users/apps", async (req: Request, res: Response) => {
 	try {
 		const { appName, apiSecret } = await createApplication(req.body);
 
+		logger.info({ appName, email: req.body.email }, "API_APP_CREATION_SUCCESS");
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
 			message: `Application: ${appName} has been successfully created & authorized`,
@@ -238,6 +259,7 @@ router.get("/users/apps", async (req: Request, res: Response) => {
 				loginToken as string
 			);
 			if (otpSent) {
+				logger.info({ appName }, "API_OTP_REQUEST_SUCCESS");
 				return res.status(HTTP_STATUS_CODES.CREATED).json({
 					success: true,
 					message: `OTP for Application: ${appName} has been sent`,
@@ -262,12 +284,20 @@ router.post("/users/otp", async (req: Request, res: Response) => {
 		await OTPService(req.body);
 		const { apiSecret } = await apiAuthorizeService(req.body);
 
+		logger.info(
+			{ email: req.body.email, appName: req.body.appName },
+			"API_OTP_VERIFICATION_SUCCESS"
+		);
 		return res.status(HTTP_STATUS_CODES.OK).json({
 			success: true,
 			message: `OTP success...`,
 			apiSecret,
 		});
 	} catch (error) {
+		logger.error(
+			{ email: req.body.email, appName: req.body.appName, error },
+			"API_OTP_VERIFICATION_FAILED"
+		);
 		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
 			success: false,
 			message: `Application has not been authorized successfully`,
@@ -355,6 +385,7 @@ router.post("/apps/revoke", async (req: Request, res: Response) => {
 		await services.em.flush();
 
 		// Bug: Should likely return a success message here if revocation is successful
+		logger.warn({ appName }, "API_APP_REVOCATION_SUCCESS");
 		return res.status(HTTP_STATUS_CODES.OK).json({
 			success: true,
 			message: `Application: ${appName} has been revoked`,

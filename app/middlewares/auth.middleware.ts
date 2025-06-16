@@ -12,6 +12,7 @@ import { services } from "../config/db";
 import { hashKeys } from "../utils/security.util";
 import constantsUtil from "../utils/constants.util";
 import { ILog } from "../interfaces";
+import logger from "../utils/logger.util";
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 
@@ -111,6 +112,7 @@ export const authMiddleware = async (
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
+		logger.warn({ session: req.session, error }, "UI_AUTH_FAILED");
 		// Add error to redirect page
 		return res.send(`
         <html>
@@ -165,6 +167,7 @@ export const apiAuthMiddleware = async (
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
+		logger.warn({ headers: req.headers, error }, "API_AUTH_FAILED");
 		if (error instanceof HTTPError) {
 			return res.status(error?.statusCode).json({
 				status: "error",
