@@ -16,7 +16,7 @@ import config from "./app/config/config";
 import QueueWorkersHandler from "./app/queue/queueWorkers.handler";
 import constants from "./app/config/constants";
 import { queueServices } from "./app/queue/queue.service";
-import "./app/utils/logger.util";
+import logger from "./app/utils/logger.util";
 
 dotenv.config();
 const app = express();
@@ -55,6 +55,7 @@ export const init = (async () => {
 
 	// To make sure /worker/admin points to the bull queue dashboard
 	app.use("/worker/admin", serverAdapter.getRouter());
+	app.use(logger.httpLoggerInstance);
 	app.use(express.json());
 	app.use(
 		session({
@@ -101,6 +102,6 @@ export const init = (async () => {
 	app.use((req, res) => res.status(404).json({ message: "No route found" }));
 
 	services.server = app.listen(PORT, () => {
-		console.log(`Service started on port ${PORT}`);
+		logger.info(`Service started on port ${PORT}`, "STARTUP_EVENT");
 	});
 })();

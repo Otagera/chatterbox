@@ -157,7 +157,10 @@ class PinoLogger {
 			customReceivedMessage: (req: Request) => {
 				return `REQUEST-INITIATED-${req.id}`;
 			},
-			customSuccessMessage: (req: Request) => {
+			customSuccessMessage: (req: Request, res: Response) => {
+				if (res.statusCode >= 400) {
+					return `REQUEST-FAILED-${req.id}`;
+				}
 				return `REQUEST-COMPLETE-${req.id}`;
 			},
 			customErrorMessage: (req: Request) => {
@@ -176,7 +179,7 @@ class PinoLogger {
 				};
 			},
 			serializers: {
-				err: () => false,
+				err: pino.stdSerializers.err,
 				req: (req: SerializedRequest) => {
 					return process.env.NODE_ENV === "development"
 						? `${req.method} ${req.url}`
@@ -219,7 +222,4 @@ const logger = new PinoLogger({
 	enableConsoleLogs: true,
 });
 
-logger.info({ test: "info" }, "exampleTest");
-// setInterval(() => {
-// 	console.log("Running....");
-// }, 2000);
+export default logger;

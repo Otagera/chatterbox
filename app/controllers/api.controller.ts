@@ -9,7 +9,6 @@ import { HTTPError } from "../utils/error.util";
 import constantsUtil from "../utils/constants.util";
 import {
 	apiAuthMiddleware,
-	authMiddleware,
 	verifyService,
 } from "../middlewares/auth.middleware";
 import { encrypt, encryptObj, hashLogintoken } from "../utils/security.util";
@@ -27,13 +26,36 @@ const router = Router();
 const logSpec = z.object({
 	level: z.string(),
 	name: z.string(),
-	context: z.object({}).optional(),
+	context: z.record(z.string()).optional(),
 	time: z.union([z.date(), z.number()]),
 	data: z.union([z.record(z.any()), z.string()]).optional(),
 	traceId: z.string().optional(),
-	request: z.string().optional(),
-	response: z.string().optional(),
-	timeTaken: z.string().optional(),
+	request: z
+		.object({
+			id: z.string(),
+			method: z.string(),
+			url: z.string(),
+			query: z.record(z.string()).optional(),
+			params: z.record(z.string()).optional(),
+			headers: z.string().optional(),
+			remoteAddress: z.string().optional(),
+			remotePort: z.string().optional(),
+		})
+		.optional(),
+	response: z
+		.object({
+			statusCode: z.number(),
+			headers: z.string(),
+		})
+		.optional(),
+	error: z
+		.object({
+			type: z.string().optional(),
+			message: z.string().optional(),
+			stack: z.string().optional(),
+		})
+		.optional(),
+	timeTaken: z.union([z.date(), z.number()]).optional(),
 	key: z.string(),
 	appName: z.string(),
 });
@@ -334,14 +356,13 @@ router.post("/apps/revoke", async (req: Request, res: Response) => {
 
 		// Bug: Should likely return a success message here if revocation is successful
 		return res.status(HTTP_STATUS_CODES.OK).json({
-			// Corrected from NOTFOUND
-			success: true, // Corrected
-			message: `Application: ${appName} has been revoked`, // Corrected
+			success: true,
+			message: `Application: ${appName} has been revoked`,
 		});
 	} catch (error) {
 		return res.status(HTTP_STATUS_CODES.SERVICE_UNAVAILABLE).json({
 			success: false,
-			message: "API secret revocation not succesfully",
+			message: "API secret revocation not successfully",
 		});
 	}
 });

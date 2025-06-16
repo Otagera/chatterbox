@@ -27,8 +27,8 @@ export const generateSaveAndSendOTP = async (user: User, appName: string) => {
 	await sendOTP(generatedOTP, user.email, appName);
 };
 
-// Add password to this cause the original idea was to be passwordless
-// but there has been a significante gap between email and OTP right
+// Add password to this cause the original idea was to be password-less
+// but there has been a significant gap between email and OTP right
 // now so I would need to add password for better security
 export const loginService = async (params: Record<string, any>) => {
 	const spec = z

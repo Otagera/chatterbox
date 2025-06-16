@@ -11,6 +11,7 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 
 import { AppKey, Log } from "../entities";
 import { decryptObj, hashLogintoken, maskKey } from "../utils/security.util";
+import logger from "../utils/logger.util";
 import {
 	OTPService,
 	apiAuthorizeService,
@@ -609,9 +610,9 @@ router.get(
 				try {
 					decryptedData = decryptObj(possibleEncryptedData, req.appName || "");
 				} catch (decryptionError) {
-					console.warn(
-						`Failed to decrypt log data for log ID ${id}:`,
-						decryptionError
+					logger.warn(
+						`Failed to decrypt log data for log ID ${id}: ${decryptionError}`,
+						"DECRYPTION-ERROR"
 					);
 					decryptedData = {
 						decryption_error: "Could not decrypt data.",
