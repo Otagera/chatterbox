@@ -35,7 +35,7 @@ export default async function (opts) {
 
 				const regex =
 					/REQUEST-INITIATED-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
-				console.log("log.key.match(regex)", log.key.match(regex));
+
 				const isRequestLog = !!log.request;
 				const isInitiatedLog =
 					!!log.key.match(regex) ||
