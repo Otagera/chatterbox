@@ -13,16 +13,17 @@ import { DateTime } from "luxon";
 import { startChatterboxServer } from "@chatterbox/chatterbox-sdk";
 
 import { ChatterboxConfigType, ChatterboxKey } from "../interfaces/IUtil";
+import config from "../config/config";
 
 startChatterboxServer({
-	appName: process.env.CHATTERBOX_APP_NAME,
-	apiSecret: process.env.CHATTERBOX_API_SECRET,
-	logFile: "chatterbox-queue.json",
+	appName: config.chatterbox.appName,
+	apiSecret: config.chatterbox.APISecret,
+	logFile:
+		process.env.NODE_ENV === "test"
+			? "chatterbox-queue-test.json"
+			: "chatterbox-queue.json",
 });
 
-const config: ChatterboxConfigType = {
-	appName: process.env.CHATTERBOX_APP_NAME || "",
-};
 class PinoLogger {
 	httpLoggerInstance;
 	_config;
@@ -216,7 +217,7 @@ class PinoLogger {
 }
 
 const logger = new PinoLogger({
-	appName: config.appName,
+	appName: config.chatterbox.appName,
 	level: "debug",
 	messageKey: "key",
 	enableConsoleLogs: true,

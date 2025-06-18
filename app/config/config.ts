@@ -24,6 +24,18 @@ const config = {
 		sender: process.env.MAILGUN_SENDER,
 	},
 	processEmails: process.env.PROCESS_EMAILS || false,
+
+	// chatterbox
+	chatterbox: {
+		logFile: process.env.LOG_FILE || "logQueue.json",
+		retryDelayMS: Number(process.env.RETRY_DELAY_MS) || 10000,
+		maxBilkLog: Number(process.env.MAX_BULK_LOG) || 10,
+		APIUrl: process.env.CHATTERBOX_API_URL,
+		loggingApiUrl: process.env.LOGGING_API_URL,
+		bulkLoggingApiUrl: process.env.BULK_LOGGING_API_URL,
+		appName: process.env.CHATTERBOX_APP_NAME || "chatterbox",
+		APISecret: process.env.CHATTERBOX_API_SECRET,
+	},
 };
 
 export default config;

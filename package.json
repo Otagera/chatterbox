@@ -7,6 +7,8 @@
 		"build": "npm run tailwind:css && tsc",
 		"start:dev": "npm run tailwind:css && tsc-watch --onSuccess \"node dist/index.js\"",
 		"start:prod": "tsc && node dist/index.js",
+		"test": "jest",
+		"test:watch": "NODE_ENV=test jest --watch",
 		"tailwind:css": "postcss views/styles/tailwind.css -o views/styles/style.css",
 		"typecheckSDK": "tsc sdk/chatterboxTransport.js --declaration --emitDeclarationOnly --allowJs"
 	},
@@ -60,7 +62,7 @@
 		"postcss": "^8.5.3",
 		"postcss-cli": "^11.0.1",
 		"supertest": "^7.0.0",
-		"ts-jest": "^29.1.5",
+		"ts-jest": "^29.4.0",
 		"ts-node": "^10.9.2"
 	},
 	"mikro-orm": {
