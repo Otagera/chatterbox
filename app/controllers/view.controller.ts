@@ -998,13 +998,11 @@ const getViewApps = async (
  */
 router.get("/view/apps", async (req: Request, res: Response) => {
 	try {
-		const spec = z
-			.object({
-				appName: z.string(),
-				loginToken: z.string(),
-				newEmail: z.string().email(),
-			})
-			.required();
+		const spec = z.object({
+			appName: z.string().optional(),
+			loginToken: z.string(),
+			newEmail: z.string().email().optional(),
+		});
 		type specType = z.infer<typeof spec>;
 		const query = validateSpec<specType>(spec, req.query);
 		const { appName, newEmail, loginToken } = query;
@@ -1051,6 +1049,7 @@ router.get("/view/apps", async (req: Request, res: Response) => {
 			);
 		}
 	} catch (error: any) {
+		console.log("error", error);
 		const message =
 			error instanceof ZodError
 				? error.errors[0].message
