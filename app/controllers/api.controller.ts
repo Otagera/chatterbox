@@ -146,7 +146,7 @@ router.post(
 			// );
 			return res
 				.status(HTTP_STATUS_CODES.OK)
-				.json({ success: true, message: "Bulk Log successfully" });
+				.json({ success: true, message: "Bulk Logs successfully" });
 		} catch (error) {
 			logger.error(
 				{ appName: req.appKey?.appName, error },

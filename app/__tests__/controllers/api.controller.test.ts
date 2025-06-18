@@ -100,7 +100,7 @@ describe("API Controller", () => {
 			expect(response.status).toBe(200);
 			expect(response.body).toEqual({
 				success: true,
-				message: "Bulk Log successfully",
+				message: "Bulk Logs successfully",
 			});
 			expect(services.logs.create).toHaveBeenCalledTimes(2);
 			expect(services.em.flush).toHaveBeenCalledTimes(1);

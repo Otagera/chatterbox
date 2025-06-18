@@ -1,6 +1,6 @@
 # Chatterbox
 
-Chatterbox is a Node.js application designed for robust, secure log management and background job processing. It provides a web interface for viewing and managing logs, users, and applications, alongside a comprehensive API for programmatic log ingestion and administrative tasks. Built with TypeScript, it utilizes MikroORM for database interactions (MongoDB), Express for handling HTTP requests, Pug with Tailwind CSS for the web UI, HTMX for a dynamic user experience, and BullMQ (with Redis) for managing background queues (including email sending).
+Chatterbox is a Node.js application designed for robust, secure log management and background job processing. It provides a web interface for viewing and managing logs, users, and applications, alongside a comprehensive API for programmatic log ingestion and administrative tasks. Built with TypeScript, it utilizes MikroORM for database interactions (MongoDB), Express with Express-Promise-Router for handling HTTP requests, Pug with Tailwind CSS for the web UI, HTMX for a dynamic user experience, and BullMQ (with Redis) for managing background queues (including email sending).
 
 ## Key Features
 
@@ -31,13 +31,14 @@ Chatterbox is a Node.js application designed for robust, secure log management a
 -   **Comprehensive API:** A dedicated API for programmatic interaction, covering log ingestion, user authentication, application lifecycle management, and API secret retrieval.
 -   **Dynamic Web Interface:** The `ViewController` leverages **Pug** for server-side templating, **Tailwind CSS** for styling, and **HTMX** to provide a responsive and interactive user experience without requiring a full-fledged frontend framework.
 -   **Environment Configuration**: Managed using `dotenv`.
+-   **Asynchronous Route Handling**: Express routes leverage `express-promise-router` to simplify asynchronous operations, automatically catching errors and passing them to the error middleware.
 
 ## Prerequisites
 
 -   Node.js (v16 or higher recommended)
 -   npm or yarn
 -   MongoDB instance (v4.4 or higher recommended)
--   Redis instance
+-   Redis instance (essential for BullMQ)
 -   PostCSS CLI (for Tailwind CSS, if modifying styles: `npm install -g postcss-cli`)
 -   Mailgun account (for sending OTP and other emails).
 
@@ -45,7 +46,7 @@ Chatterbox is a Node.js application designed for robust, secure log management a
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
+    git clone [<chatterbox>](https://github.com/Otagera/chatterbox.git)
     cd chatterbox
     ```
 
@@ -270,6 +271,12 @@ The API allows for programmatic interaction with Chatterbox.
         -   `email/` (example location): Contains email sending logic like `otpEmail.service.ts`, `sendEmail.handler.ts`.
     -   **`utils/`**: Utility functions (e.g., `security.util.ts`, `validate.util.ts`).
     -   **`interfaces/`**: TypeScript interface definitions.
+    -   **`__tests__/`**: Unit and integration tests for application components.
+-   **`sdk/`**: The Chatterbox SDK, a standalone module for log ingestion.
+    -   **`index.js`**: Main SDK entry point.
+    -   **`chatterboxTransport.mjs`**: Pino transport for the SDK.
+    -   **`example.js`**: Example usage of the SDK.
+    -   **`config.js`**: SDK configuration.
 -   **`views/`**: Pug template files.
     -   **`assets/`**: Static assets (e.g., SVGs).
     -   **`email/`**: Pug templates for emails (e.g., `otp.ejs`, `welcome.ejs`).
@@ -310,6 +317,9 @@ The API allows for programmatic interaction with Chatterbox.
 -   `npm run start:dev`: Starts the development server with Tailwind CSS compilation, TypeScript watching, and auto-restart on changes (`npm run tailwind:css && tsc-watch --onSuccess "node dist/index.js"`).
 -   `npm run start:prod`: Builds and starts the application (`tsc && node dist/index.js`). Similar to `npm run build && npm run start`.
 -   `npm run tailwind:css`: Compiles Tailwind CSS using PostCSS (`postcss views/styles/tailwind.css -o views/styles/style.css`).
+-   `npm test`: Runs all tests (jest).
+-   `npm run test:watch`: Runs tests in watch mode (`NODE_ENV=test jest --watch`).
+-   `npm run typecheckSDK`: Performs type checking for the SDK (`tsc sdk/chatterboxTransport.js --declaration --emitDeclarationOnly --allowJs`).
 
 ## License
 
