@@ -71,4 +71,6 @@ html(lang='en')
               tr(hx-get="/view/get-more-logs" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="this")
                 td(colspan="4" class="px-6 py-4 text-center text-gray-500 text-sm") Loading more...
         
+    div(id="toast-container" class="fixed top-5 right-5 z-50 space-y-2")
+    script(src="/js/htmx-errors.js")
     script.

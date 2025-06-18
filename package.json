@@ -8,7 +8,7 @@
 		"start:dev": "npm run tailwind:css && tsc-watch --onSuccess \"node dist/index.js\"",
 		"start:prod": "tsc && node dist/index.js",
 		"tailwind:css": "postcss views/styles/tailwind.css -o views/styles/style.css",
-		"typecheckSDK": "tsc  sdk/chatterboxTransport.js --declaration --emitDeclarationOnly --allowJs"
+		"typecheckSDK": "tsc sdk/chatterboxTransport.js --declaration --emitDeclarationOnly --allowJs"
 	},
 	"keywords": [],
 	"author": "Othniel Agera",

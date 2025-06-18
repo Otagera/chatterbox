@@ -50,6 +50,8 @@ html(lang='en')
               canvas#errorRateChart
         hr(class="border-t border-gray-300 my-6")
 
+    div(id="toast-container" class="fixed top-5 right-5 z-50 space-y-2")
+    script(src="/js/htmx-errors.js")
     script.
       const chartData = !{JSON.stringify(chartData || {})};
     script(src="/js/analytics.js")
