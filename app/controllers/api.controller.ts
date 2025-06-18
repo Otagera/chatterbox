@@ -27,7 +27,7 @@ const router = Router();
 const logSpec = z.object({
 	level: z.string(),
 	name: z.string(),
-	context: z.record(z.string()).optional(),
+	context: z.union([z.record(z.string()).optional(), z.string()]).optional(),
 	time: z.union([z.date(), z.number()]),
 	data: z.union([z.record(z.any()), z.string()]).optional(),
 	traceId: z.string().optional(),
