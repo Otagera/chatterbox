@@ -112,7 +112,7 @@ export const authMiddleware = async (
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
-		logger.warn({ session: req.session, error }, "UI_AUTH_FAILED");
+		logger.warn({ session: req.session, error }, "UI-AUTH-FAILED");
 		// Add error to redirect page
 		return res.send(`
         <html>
@@ -167,7 +167,7 @@ export const apiAuthMiddleware = async (
 			throw new OperationError({ message: "Unauthorized request." });
 		}
 	} catch (error) {
-		logger.warn({ headers: req.headers, error }, "API_AUTH_FAILED");
+		logger.warn({ headers: req.headers, error }, "API-AUTH-FAILED");
 		if (error instanceof HTTPError) {
 			return res.status(error?.statusCode).json({
 				status: "error",

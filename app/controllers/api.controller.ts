@@ -83,14 +83,14 @@ router.post("/logs", apiAuthMiddleware, async (req: Request, res: Response) => {
 
 		services.logs.create(log as ILog);
 		await services.em.flush();
-		logger.info({ appName: appKey?.appName }, "LOG_INGESTION_SUCCESS");
+		logger.info({ appName: appKey?.appName }, "LOG-INGESTION-SUCCESS");
 		return res
 			.status(HTTP_STATUS_CODES.OK)
 			.json({ success: true, message: "Logged successfully" });
 	} catch (error) {
 		logger.error(
 			{ appName: req.appKey?.appName, error },
-			"LOG_INGESTION_FAILED"
+			"LOG-INGESTION-FAILED"
 		);
 		if (error instanceof HTTPError) {
 			return res.status(error?.statusCode).json({
@@ -139,17 +139,18 @@ router.post(
 			});
 			await services.em.flush();
 
-			logger.info(
-				{ appName: appKey?.appName, count: logs.length },
-				"BULK_LOG_INGESTION_SUCCESS"
-			);
+			// I am commenting this out because it creates a circular logging call.
+			// logger.info(
+			// 	{ appName: appKey?.appName, count: logs.length },
+			// 	"BULK-LOG-INGESTION-SUCCESS"
+			// );
 			return res
 				.status(HTTP_STATUS_CODES.OK)
 				.json({ success: true, message: "Bulk Log successfully" });
 		} catch (error) {
 			logger.error(
 				{ appName: req.appKey?.appName, error },
-				"BULK_LOG_INGESTION_FAILED"
+				"BULK-LOG-INGESTION-FAILED"
 			);
 			if (error instanceof HTTPError) {
 				return res.status(error?.statusCode).json({
@@ -179,7 +180,7 @@ router.post(
 router.post("/users/login", async (req: Request, res: Response) => {
 	try {
 		const { email, existingApps, loginToken } = await loginService(req.body);
-		logger.info({ email }, "API_LOGIN_INITIATED");
+		logger.info({ email }, "API-LOGIN-INITIATED");
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
 			message: `User: ${email} OTP sent successfully`,
@@ -189,7 +190,7 @@ router.post("/users/login", async (req: Request, res: Response) => {
 	} catch (error) {
 		logger.error(
 			{ email: req.body.email, error },
-			"API_LOGIN_INITIATION_FAILED"
+			"API-LOGIN-INITIATION-FAILED"
 		);
 		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
 			success: false,
@@ -230,7 +231,7 @@ router.post("/users/apps", async (req: Request, res: Response) => {
 	try {
 		const { appName, apiSecret } = await createApplication(req.body);
 
-		logger.info({ appName, email: req.body.email }, "API_APP_CREATION_SUCCESS");
+		logger.info({ appName, email: req.body.email }, "API-APP-CREATION-SUCCESS");
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
 			message: `Application: ${appName} has been successfully created & authorized`,
@@ -259,7 +260,7 @@ router.get("/users/apps", async (req: Request, res: Response) => {
 				loginToken as string
 			);
 			if (otpSent) {
-				logger.info({ appName }, "API_OTP_REQUEST_SUCCESS");
+				logger.info({ appName }, "API-OTP-REQUEST-SUCCESS");
 				return res.status(HTTP_STATUS_CODES.CREATED).json({
 					success: true,
 					message: `OTP for Application: ${appName} has been sent`,
@@ -286,7 +287,7 @@ router.post("/users/otp", async (req: Request, res: Response) => {
 
 		logger.info(
 			{ email: req.body.email, appName: req.body.appName },
-			"API_OTP_VERIFICATION_SUCCESS"
+			"API-OTP-VERIFICATION-SUCCESS"
 		);
 		return res.status(HTTP_STATUS_CODES.OK).json({
 			success: true,
@@ -296,7 +297,7 @@ router.post("/users/otp", async (req: Request, res: Response) => {
 	} catch (error) {
 		logger.error(
 			{ email: req.body.email, appName: req.body.appName, error },
-			"API_OTP_VERIFICATION_FAILED"
+			"API-OTP-VERIFICATION-FAILED"
 		);
 		return res.status(HTTP_STATUS_CODES.SERVER_ERROR).json({
 			success: false,
@@ -385,7 +386,7 @@ router.post("/apps/revoke", async (req: Request, res: Response) => {
 		await services.em.flush();
 
 		// Bug: Should likely return a success message here if revocation is successful
-		logger.warn({ appName }, "API_APP_REVOCATION_SUCCESS");
+		logger.warn({ appName }, "API-APP-REVOCATION-SUCCESS");
 		return res.status(HTTP_STATUS_CODES.OK).json({
 			success: true,
 			message: `Application: ${appName} has been revoked`,

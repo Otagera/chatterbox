@@ -3,6 +3,8 @@ import { config as dotenvConfig } from "dotenv";
 dotenvConfig();
 
 const config = {
+	env: process.env.NODE_ENV || "development",
+	sessionSecret: String(process.env.SESSION_SECRET),
 	dbURL: process.env.DB_URL || "mongodb://127.0.0.1:27017",
 	dbName: process.env.DB_NAME || "chatterbox",
 	apiURL: "http://localhost",

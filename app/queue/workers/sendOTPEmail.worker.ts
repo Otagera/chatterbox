@@ -22,7 +22,7 @@ const run = async (data: {
 
 		return { status: "Success", message: `Successfully sent OTP email`, email };
 	} catch (error: any) {
-		logger.error(error, "OTP_EMAIL_FAILED");
+		logger.error(error, "OTP-EMAIL-FAILED");
 		throw error;
 	}
 };

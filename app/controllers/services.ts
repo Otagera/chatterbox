@@ -25,7 +25,7 @@ export const generateSaveAndSendOTP = async (user: User, appName: string) => {
 	services.em.persist(otp);
 	await services.em.flush();
 
-	logger.info({ userId: user.id, appName }, "OTP_GENERATED_AND_SAVED");
+	logger.info({ userId: user.id, appName }, "OTP-GENERATED-AND-SAVED");
 	await sendOTP(generatedOTP, user.email, appName);
 };
 
@@ -72,7 +72,7 @@ export const OTPService = async (params: Record<string, any>) => {
 	let user = await services.users.findOne({ email });
 	let existingOTP = await services.OTPs.findOne({ user, otp: hashOTPs(otp) });
 	if (!existingOTP) {
-		logger.warn({ email, otpUsed: otp }, "OTP_VALIDATION_INVALID");
+		logger.warn({ email, otpUsed: otp }, "OTP-VALIDATION-INVALID");
 		throw new Error("Invalid OTP");
 	}
 };
@@ -90,7 +90,7 @@ export const createApplication = async (params: Record<string, any>) => {
 
 	const user = await services.users.findOne({ email });
 	if (!user) {
-		logger.warn({ email }, "APP_CREATION_USER_NOT_FOUND");
+		logger.warn({ email }, "APP-CREATION-USER-NOT-FOUND");
 		throw new NotFoundError({ message: `User: ${email} not found` });
 	}
 	const expiresinMiliSecs = Date.now() + expires * 1000;

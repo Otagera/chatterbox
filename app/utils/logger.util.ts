@@ -48,12 +48,12 @@ class PinoLogger {
 		// console.log('🍅--> ', obj, key, '**', context);
 		this.httpLoggerInstance.logger.trace({ data }, key);
 	}
-	fatal(error: { name: string; stack: any }, message: string, context: any) {
+	fatal(error: { name: string; stack: any }, message: string, context?: any) {
 		this.httpLoggerInstance.logger.fatal(
 			{
 				context: [context, this._config.appName].find(Boolean),
 				type: error.name,
-				formatedTimestamp: `${this._getDateFormat()}`,
+				formattedTimestamp: `${this._getDateFormat()}`,
 				application: this._config.appName,
 				stack: error.stack,
 			},

@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import express from "express";
+import express, { NextFunction, Request, Response } from "express";
 import bodyParser from "body-parser";
 import path from "path";
 import dotenv from "dotenv";
@@ -17,6 +17,7 @@ import QueueWorkersHandler from "./app/queue/queueWorkers.handler";
 import constants from "./app/config/constants";
 import { queueServices } from "./app/queue/queue.service";
 import logger from "./app/utils/logger.util";
+import limiter from "./app/utils/rateLimiter.util";
 
 dotenv.config();
 const app = express();
@@ -59,22 +60,27 @@ export const init = (async () => {
 	app.use(express.json());
 	app.use(
 		session({
-			secret: "keyboard cat",
+			secret: config.sessionSecret,
 			resave: true,
 			saveUninitialized: true,
-			cookie: { maxAge: 6000000 },
+			// Only send over HTTPS in prod, Prevents client-side JS from reading the cookie & 24 hours
+			cookie: {
+				secure: process.env.NODE_ENV === "production",
+				httpOnly: true,
+				maxAge: 24 * 60 * 60 * 1000,
+			},
 			store: MongoStore.create({
 				mongoUrl: `${config.dbURL}/${config.dbName}`,
 			}),
 		})
 	);
-	app.use((req, res, next) => RequestContext.create(services.em, next));
+	app.use((_req, _res, next) => RequestContext.create(services.em, next));
 
 	// Configuring body parser middleware
 	app.use(bodyParser.urlencoded({ extended: false }));
 	app.use(bodyParser.json());
 	// Middleware to determine if the request is from a browser
-	app.use((req, res, next) => {
+	app.use((req, _res, next) => {
 		const userAgent = req.get("User-Agent") || "";
 		const acceptHeader = req.get("Accept") || "";
 		const origin = req.get("Origin") || null;
@@ -98,10 +104,28 @@ export const init = (async () => {
 
 	app.use("/", ViewController);
 	app.use("/api", APIController);
+	app.use("/api", (req, res, next) => {
+		if (config.env === "test") {
+			next();
+		} else {
+			limiter(req, res, next);
+		}
+	});
 
-	app.use((req, res) => res.status(404).json({ message: "No route found" }));
+	app.use((_req, res) => res.status(404).json({ message: "No route found" }));
+	app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+		logger.fatal(err, "UNHANDLED-APPLICATION-ERROR");
+
+		const status = err.statusCode || 500;
+		const message =
+			config.env === "production"
+				? "An unexpected error occurred."
+				: err.message;
+
+		res.status(status).json({ status: "error", message });
+	});
 
 	services.server = app.listen(PORT, () => {
-		logger.info(`Service started on port ${PORT}`, "STARTUP_EVENT");
+		logger.info(`Service started on port ${PORT}`, "STARTUP-EVENT");
 	});
 })();
