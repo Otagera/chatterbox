@@ -24,20 +24,23 @@ import logger from "../utils/logger.util";
 
 const { HTTP_STATUS_CODES } = constantsUtil;
 const router = Router();
+
+const Keys = z.union([z.string(), z.number(), z.symbol()]);
+const AnyObject = z.record(Keys, z.unknown());
 const logSpec = z.object({
 	level: z.string(),
 	name: z.string(),
-	context: z.union([z.record(z.string()).optional(), z.string()]).optional(),
+	context: z.union([AnyObject.optional(), z.string()]).optional(),
 	time: z.union([z.date(), z.number()]),
-	data: z.union([z.record(z.any()), z.string()]).optional(),
+	data: z.union([AnyObject, z.string()]).optional(),
 	traceId: z.string().optional(),
 	request: z
 		.object({
 			id: z.string(),
 			method: z.string(),
 			url: z.string(),
-			query: z.record(z.string()).optional(),
-			params: z.record(z.string()).optional(),
+			query: AnyObject.optional(),
+			params: AnyObject.optional(),
 			headers: z.string().optional(),
 			remoteAddress: z.string().optional(),
 			remotePort: z.string().optional(),
