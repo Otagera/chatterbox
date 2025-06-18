@@ -3,7 +3,7 @@ import Router from "express-promise-router";
 
 import fs from "fs";
 import path from "path";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
 
 import { paginationState } from "../../index";
 import { services } from "../config/db";
@@ -29,6 +29,7 @@ import {
 	ChartDataset,
 	ChartData,
 } from "../interfaces/IUtil";
+import { validateSpec } from "../utils/validate.util";
 
 const svgPath = path.join(__dirname, "../../../views/assets/copy.svg");
 const svgContent = fs.readFileSync(svgPath, "utf8");
@@ -669,6 +670,16 @@ router.get(
  * Sends an error message as HTML if an error occurs.
  */
 router.post("/view/search", async (req: Request, res: Response) => {
+	const spec = z
+		.object({
+			startDate: z.string().datetime().optional(),
+			endDate: z.string().datetime().optional(),
+			level: z.string().optional(),
+			key: z.string().optional(),
+		})
+		.required();
+	type specType = z.infer<typeof spec>;
+	const body = validateSpec<specType>(spec, req.body);
 	let filter: {
 		appName?: string;
 		level?: string;
@@ -678,17 +689,17 @@ router.post("/view/search", async (req: Request, res: Response) => {
 			$lt?: Date;
 		};
 	} = { time: {}, appName: req.session.appName };
-	if ("startDate" in req.body && req.body.startDate.length) {
-		if (filter.time) filter.time["$gte"] = new Date(req.body.startDate);
+	if ("startDate" in body && body.startDate.length) {
+		if (filter.time) filter.time["$gte"] = new Date(body.startDate);
 	}
-	if ("endDate" in req.body && req.body.endDate.length) {
-		if (filter.time) filter.time["$lt"] = new Date(req.body.endDate);
+	if ("endDate" in body && body.endDate.length) {
+		if (filter.time) filter.time["$lt"] = new Date(body.endDate);
 	}
-	if ("level" in req.body && req.body.level.length) {
-		filter.level = req.body.level;
+	if ("level" in body && body.level.length) {
+		filter.level = body.level;
 	}
-	if ("key" in req.body && req.body.key.length) {
-		filter.key = req.body.key;
+	if ("key" in body && body.key.length) {
+		filter.key = body.key;
 	}
 
 	if (!Object.entries(filter.time as string).length) {
@@ -736,7 +747,7 @@ router.post("/view/search", async (req: Request, res: Response) => {
 							<p>Loading...</p>
 							<form class="collapse h-7" hx-post="/view/search" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="#more-search-logs">
 								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Level" name="level" list="levelDatalistOptions" value="${
-									req.body.level
+									body.level
 								}">
 								<datalist id="levelDatalistOptions">
 									<option value="info"></option>
@@ -747,18 +758,18 @@ router.post("/view/search", async (req: Request, res: Response) => {
 									<option value="debug"></option>
 								</datalist>
 								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Key" name="key" value="${
-									req.body.key ? req.body.key : ""
+									body.key ? body.key : ""
 								}">
 								<div>
 									<label class="block text-sm font-medium text-gray-700 mb-1" for="startDate">Start Date:</label>
 									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="startDate" id="startDate" value="${
-										req.body.startDate ? req.body.startDate : ""
+										body.startDate ? body.startDate : ""
 									}">
 								</div>
 								<div>
 									<label class="block text-sm font-medium text-gray-700 mb-1" for="endDate">Finish Date:</label>
 									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="endDate" id="endDate" value="${
-										req.body.endDate ? req.body.endDate : ""
+										body.endDate ? body.endDate : ""
 									}">
 								</div>
 							</form>
@@ -987,7 +998,16 @@ const getViewApps = async (
  */
 router.get("/view/apps", async (req: Request, res: Response) => {
 	try {
-		const { appName, newEmail, loginToken } = req.query;
+		const spec = z
+			.object({
+				appName: z.string(),
+				loginToken: z.string(),
+				newEmail: z.string().email(),
+			})
+			.required();
+		type specType = z.infer<typeof spec>;
+		const query = validateSpec<specType>(spec, req.query);
+		const { appName, newEmail, loginToken } = query;
 		if (appName && loginToken) {
 			const userEmailFromSession = req.session.email;
 			const appsHTML = await getViewApps(
@@ -1051,11 +1071,28 @@ router.get("/view/apps", async (req: Request, res: Response) => {
  * Sends an error message as HTML if an error occurs.
  */
 router.post("/view/apps", async (req: Request, res: Response) => {
-	const { loginToken } = req.query;
+	const querySpec = z
+		.object({
+			loginToken: z.string(),
+		})
+		.required();
+	type querySpecType = z.infer<typeof querySpec>;
+	const query = validateSpec<querySpecType>(querySpec, req.query);
+
+	const bodySpec = z
+		.object({
+			email: z.string().email(),
+			appName: z.string(),
+			expires: z.coerce.number().int().min(1).default(10),
+		})
+		.required();
+	type bodySpecType = z.infer<typeof bodySpec>;
+	const body = validateSpec<bodySpecType>(bodySpec, req.body);
+	const { loginToken } = query;
 	try {
 		if (!loginToken) throw new Error("Login token is required.");
 
-		const { appName, email } = await createApplication(req.body);
+		const { appName, email } = await createApplication(body);
 
 		const appsHTML = await getViewApps(
 			appName as string,
@@ -1071,7 +1108,7 @@ router.post("/view/apps", async (req: Request, res: Response) => {
 		// Attempt to resend the form with the error, might need more context for hx-target
 		// For now, sending a general error or the form again if possible.
 		// This specific error should ideally be handled by HTMX to target an error message area within the form.
-		const userEmailForForm = req.body.email;
+		const userEmailForForm = body.email;
 		const encodedLoginToken = encodeURIComponent(loginToken as string);
 		const newAppFormWithErrorHTML = `
         <div id="newAppFormContainer" class="mt-6 bg-white shadow-md rounded-lg p-6 w-full max-w-md mx-auto">
@@ -1086,7 +1123,7 @@ router.post("/view/apps", async (req: Request, res: Response) => {
             <div class="mb-4">
               <label for="appNameInput" class="block text-sm font-medium text-gray-700 mb-1">Application Name</label>
               <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="${
-								req.body.appName || ""
+								body.appName || ""
 							}" required />
             </div>
             <input type="number" name="expires" class="hidden" value="10" />
@@ -1203,7 +1240,16 @@ router.get("/view/apps/delete-cancel", async (req: Request, res: Response) => {
  * Sends an error message as HTML if an error occurs (e.g., invalid user, app not found).
  */
 router.delete("/view/apps", async (req: Request, res: Response) => {
-	const { appName, loginToken, email } = req.query;
+	const querySpec = z
+		.object({
+			appName: z.string(),
+			loginToken: z.string(),
+			email: z.string().email(),
+		})
+		.required();
+	type querySpecType = z.infer<typeof querySpec>;
+	const query = validateSpec<querySpecType>(querySpec, req.query);
+	const { appName, loginToken, email } = query;
 	try {
 		if (!appName || !loginToken || !email) {
 			throw new Error("Missing parameters for deleting an application.");

@@ -179,7 +179,13 @@ router.post(
  */
 router.post("/users/login", async (req: Request, res: Response) => {
 	try {
-		const { email, existingApps, loginToken } = await loginService(req.body);
+		const spec = z.object({
+			email: z.string().email(),
+		});
+		type specType = z.infer<typeof spec>;
+		const body = validateSpec<specType>(spec, req.body);
+		const { email, existingApps, loginToken } = await loginService(body);
+
 		logger.info({ email }, "API-LOGIN-INITIATED");
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
@@ -229,7 +235,16 @@ const sendLoginOTP = async (appName: string, loginToken: string) => {
  */
 router.post("/users/apps", async (req: Request, res: Response) => {
 	try {
-		const { appName, apiSecret } = await createApplication(req.body);
+		const spec = z
+			.object({
+				email: z.string().email(),
+				appName: z.string(),
+				expires: z.coerce.number().int().min(1).default(10),
+			})
+			.required();
+		type specType = z.infer<typeof spec>;
+		const body = validateSpec<specType>(spec, req.body);
+		const { appName, apiSecret } = await createApplication(body);
 
 		logger.info({ appName, email: req.body.email }, "API-APP-CREATION-SUCCESS");
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
@@ -252,7 +267,13 @@ router.post("/users/apps", async (req: Request, res: Response) => {
  */
 router.get("/users/apps", async (req: Request, res: Response) => {
 	try {
-		const { appName, loginToken } = req.query;
+		const spec = z.object({
+			appName: z.string(),
+			loginToken: z.string(),
+		});
+		type specType = z.infer<typeof spec>;
+		const query = validateSpec<specType>(spec, req.query);
+		const { appName, loginToken } = query;
 
 		if (appName && loginToken) {
 			const otpSent = await sendLoginOTP(
@@ -282,8 +303,15 @@ router.get("/users/apps", async (req: Request, res: Response) => {
  */
 router.post("/users/otp", async (req: Request, res: Response) => {
 	try {
+		const spec = z.object({
+			otp: z.string(),
+			email: z.string().email(),
+			appName: z.string(),
+		});
+		type specType = z.infer<typeof spec>;
+		const body = validateSpec<specType>(spec, req.body);
 		await OTPService(req.body);
-		const { apiSecret } = await apiAuthorizeService(req.body);
+		const { apiSecret } = await apiAuthorizeService(body);
 
 		logger.info(
 			{ email: req.body.email, appName: req.body.appName },
@@ -313,7 +341,16 @@ router.post("/users/otp", async (req: Request, res: Response) => {
  */
 router.post("/apps/authorize", async (req: Request, res: Response) => {
 	try {
-		const { appName, apiSecret } = await apiAuthorizeService(req.body);
+		const spec = z
+			.object({
+				email: z.string().email(),
+				appName: z.string(),
+				expires: z.coerce.number().int().min(1).default(10),
+			})
+			.required();
+		type specType = z.infer<typeof spec>;
+		const body = validateSpec<specType>(spec, req.body);
+		const { appName, apiSecret } = await apiAuthorizeService(body);
 
 		return res.status(HTTP_STATUS_CODES.CREATED).json({
 			success: true,
@@ -334,7 +371,16 @@ router.post("/apps/authorize", async (req: Request, res: Response) => {
  */
 router.post("/apps/verify", async (req: Request, res: Response) => {
 	try {
-		const isApiSecretValid = await verifyService(req.body);
+		const spec = z
+			.object({
+				appName: z.string(),
+				token: z.string(),
+				email: z.string().email(),
+			})
+			.required();
+		type specType = z.infer<typeof spec>;
+		const body = validateSpec<specType>(spec, req.body);
+		const isApiSecretValid = await verifyService(body);
 
 		if (isApiSecretValid) {
 			return res.status(HTTP_STATUS_CODES.OK).json({
