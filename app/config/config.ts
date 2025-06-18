@@ -5,8 +5,8 @@ dotenvConfig();
 const config = {
 	env: process.env.NODE_ENV || "development",
 	sessionSecret: String(process.env.SESSION_SECRET),
-	dbURL: process.env.DB_URL || "mongodb://127.0.0.1:27017",
-	dbName: process.env.DB_NAME || "chatterbox",
+	dbURL: process.env.DB_URL,
+	dbName: process.env.DB_NAME,
 	apiURL: "http://localhost",
 	baseApiURL: "http://localhost",
 	port: process.env.PORT || 3005,
