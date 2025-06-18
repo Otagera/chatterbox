@@ -33,12 +33,12 @@ export default async function (opts) {
 			try {
 				const log = JSON.parse(chunk.toString());
 
-				const regex =
+				const reqInitiatedRegex =
 					/REQUEST-INITIATED-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
 
 				const isRequestLog = !!log.request;
 				const isInitiatedLog =
-					!!log.key.match(regex) ||
+					!!log.key.match(reqInitiatedRegex) ||
 					(log.response && log.response.statusCode < 400);
 				const isBlockedUrl = blockedUrls.includes(log.request.url);
 				const isCorrectTypeToBlock = isRequestLog || isInitiatedLog;
