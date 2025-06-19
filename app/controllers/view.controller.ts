@@ -949,10 +949,13 @@ const getViewApps = async (
 		loginToken: hashLogintoken(loginToken as string),
 	});
 
-	if (!user)
+	if (!user) {
+		console.log("userEmail", userEmail);
+		console.log("loginToken", loginToken);
 		throw new Error(
 			"User authentication failed or user not found for this app."
 		);
+	}
 	const app = await services.appKeys.findOne({
 		appName: appName as string,
 		user,

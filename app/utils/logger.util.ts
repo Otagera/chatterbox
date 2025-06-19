@@ -124,7 +124,7 @@ class PinoLogger {
 					colorizeObjects: true,
 					messageKey: this._config.messageKey,
 					ignore: "pid,hostname,name",
-					singleLine: process.env.NODE_ENV === "development",
+					singleLine: config.env === "development",
 					translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
 					customColors: {
 						info: "green",
