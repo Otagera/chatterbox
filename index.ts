@@ -65,7 +65,7 @@ export const init = (async () => {
 			saveUninitialized: true,
 			// Only send over HTTPS in prod, Prevents client-side JS from reading the cookie & 24 hours
 			cookie: {
-				secure: process.env.NODE_ENV === "production",
+				// secure: process.env.NODE_ENV === "production",
 				httpOnly: true,
 				maxAge: 24 * 60 * 60 * 1000,
 			},
@@ -76,7 +76,6 @@ export const init = (async () => {
 	);
 	app.use((_req, _res, next) => RequestContext.create(services.em, next));
 
-	// Configuring body parser middleware
 	app.use(bodyParser.urlencoded({ extended: false }));
 	app.use(bodyParser.json());
 	// Middleware to determine if the request is from a browser
