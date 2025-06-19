@@ -34,24 +34,30 @@ const logSpec = z.object({
 	time: z.union([z.date(), z.number()]),
 	data: z.union([AnyObject, z.string()]).optional(),
 	traceId: z.string().optional(),
-	request: z
-		.object({
-			id: z.string(),
-			method: z.string(),
-			url: z.string(),
-			query: AnyObject.optional(),
-			params: AnyObject.optional(),
-			headers: z.string().optional(),
-			remoteAddress: z.string().optional(),
-			remotePort: z.string().optional(),
-		})
-		.optional(),
-	response: z
-		.object({
-			statusCode: z.number(),
-			headers: z.string(),
-		})
-		.optional(),
+	request: z.union([
+		z
+			.object({
+				id: z.string(),
+				method: z.string(),
+				url: z.string(),
+				query: AnyObject.optional(),
+				params: AnyObject.optional(),
+				headers: z.string().optional(),
+				remoteAddress: z.string().optional(),
+				remotePort: z.string().optional(),
+			})
+			.optional(),
+		z.string(),
+	]),
+	response: z.union([
+		z
+			.object({
+				statusCode: z.number(),
+				headers: z.string(),
+			})
+			.optional(),
+		z.string(),
+	]),
 	error: z
 		.object({
 			type: z.string().optional(),
