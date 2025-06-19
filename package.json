@@ -1,6 +1,6 @@
 {
 	"name": "chatterbox",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "A simple typescript server to parse log",
 	"scripts": {
 		"start": "node dist/index.js",

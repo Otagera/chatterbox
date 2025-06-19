@@ -950,8 +950,6 @@ const getViewApps = async (
 	});
 
 	if (!user) {
-		console.log("userEmail", userEmail);
-		console.log("loginToken", loginToken);
 		throw new Error(
 			"User authentication failed or user not found for this app."
 		);
@@ -1052,7 +1050,6 @@ router.get("/view/apps", async (req: Request, res: Response) => {
 			);
 		}
 	} catch (error: any) {
-		console.log("error", error);
 		const message =
 			error instanceof ZodError
 				? error.errors[0].message
