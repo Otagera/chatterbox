@@ -58,6 +58,7 @@ export const init = (async () => {
 	app.use("/worker/admin", serverAdapter.getRouter());
 	app.use(logger.httpLoggerInstance);
 	app.use(express.json());
+	app.set("trust proxy", 1);
 	app.use(
 		session({
 			secret: config.sessionSecret,
@@ -65,7 +66,7 @@ export const init = (async () => {
 			saveUninitialized: true,
 			// Only send over HTTPS in prod, Prevents client-side JS from reading the cookie & 24 hours
 			cookie: {
-				// secure: process.env.NODE_ENV === "production",
+				secure: process.env.NODE_ENV === "production",
 				httpOnly: true,
 				maxAge: 24 * 60 * 60 * 1000,
 			},
