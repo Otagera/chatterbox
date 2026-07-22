@@ -15,6 +15,11 @@ services:
     image: ${APP_IMAGE:-ghcr.io/otagera/chatterbox:latest}
     restart: unless-stopped
     environment:
+      # Tells Coolify which service/port the domain maps to, so its proxy
+      # creates a router and requests a TLS certificate for it. Without this a
+      # compose deployment has no route for the hostname and the proxy falls
+      # back to a self-signed cert (Cloudflare then returns 526).
+      SERVICE_FQDN_APP_3005: ${SERVICE_FQDN_APP_3005:-https://chatterbox.otagera.xyz}
       NODE_ENV: production
       PORT: "3005"
       # Internal service names on the compose network.
