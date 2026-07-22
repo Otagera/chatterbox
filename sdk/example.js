@@ -20,10 +20,11 @@ const { ChatterboxSDK } = require("./index");
 
 const appName = process.env.CHATTERBOX_APP_NAME;
 const apiSecret = process.env.CHATTERBOX_API_SECRET;
+const apiUrl = process.env.CHATTERBOX_API_URL;
 
-if (!appName || !apiSecret) {
+if (!appName || !apiSecret || !apiUrl) {
 	console.error(
-		"[example] Missing CHATTERBOX_APP_NAME / CHATTERBOX_API_SECRET.\n" +
+		"[example] Missing CHATTERBOX_API_URL / CHATTERBOX_APP_NAME / CHATTERBOX_API_SECRET.\n" +
 			"          Copy .env.example to .env and fill them in first."
 	);
 	process.exit(1);
@@ -31,7 +32,7 @@ if (!appName || !apiSecret) {
 
 // One SDK instance per application. It authenticates every request with your
 // API secret and transparently queues + retries logs if the server is down.
-const chatterbox = new ChatterboxSDK({ appName, apiSecret });
+const chatterbox = new ChatterboxSDK({ appName, apiSecret, apiUrl });
 
 /**
  * Build a log entry matching the Chatterbox log schema.

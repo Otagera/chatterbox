@@ -21,6 +21,40 @@ const PINO_LEVEL_LABELS = {
 };
 
 /**
+ * Resolves the directory used to persist the retry queue.
+ * Order: explicit option -> CHATTERBOX_DATA_DIR env -> <cwd>/.chatterbox
+ * Never defaults inside the package directory (node_modules).
+ * @param {string} [explicit]
+ * @returns {string}
+ */
+const resolveDataDir = (explicit) =>
+	explicit ||
+	process.env.CHATTERBOX_DATA_DIR ||
+	path.join(process.cwd(), ".chatterbox");
+
+/**
+ * Resolves the Unix socket used between a pino transport and the Chatterbox
+ * forwarder. The path is derived per application so that several apps running
+ * on the same host do not fight over a single shared socket.
+ *
+ * NOTE: this logic is duplicated in `chatterboxTransport.mjs` (ESM cannot
+ * import from this CJS module at transport-load time). Keep both in sync.
+ *
+ * @param {string} appName
+ * @param {string} [explicit] Explicit socketPath option, wins if provided.
+ * @returns {string}
+ */
+const resolveSocketPath = (appName, explicit) => {
+	if (explicit) return explicit;
+	if (process.env.CHATTERBOX_SOCKET_PATH) return process.env.CHATTERBOX_SOCKET_PATH;
+	const slug = String(appName || "default")
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]+/g, "-")
+		.slice(0, 64);
+	return path.join(os.tmpdir(), `chatterbox-${slug}.sock`);
+};
+
+/**
  * @typedef {Object} LogEntry
  * @property {string} id - A unique ID for the log entry, typically an MD5 hash of its data, used to prevent duplicates.
  * @property {any} data - The actual log data payload, which can be any serializable JSON object.
@@ -99,10 +133,12 @@ class ChatterboxSDK {
 	 * @param {Object} _options - Configuration options for the SDK.
 	 * @param {string} _options.appName - **(Required)** The name of the application using the SDK. This is included in log metadata.
 	 * @param {string} _options.apiSecret - **(Required)** The API secret key for authenticating with the Chatterbox service.
-	 * @param {string} [_options.logFile] - Optional. The file path for storing queued logs. Defaults to `config.LOG_FILE`.
-	 * @param {number} [_options.retryDelayMS] - Optional. The delay (in milliseconds) between retry attempts for queued logs. Defaults to `config.RETRY_DELAY_MS`.
-	 * @param {number} [_options.maxBulkLog] - Optional. The maximum number of logs to send in a single bulk request. Defaults to `config.MAX_BULK_LOG`.
-	 * @throws {Error} If `appName` or `apiSecret` are not provided in the options.
+	 * @param {string} [_options.apiUrl] - Base URL of your Chatterbox server, e.g. `https://logs.example.com`. Falls back to the `CHATTERBOX_API_URL` env var.
+	 * @param {string} [_options.logFile] - Optional. File name used for the on-disk retry queue.
+	 * @param {string} [_options.dataDir] - Optional. Directory for the retry queue. Defaults to `<cwd>/.chatterbox`.
+	 * @param {number} [_options.retryDelayMS] - Optional. The delay (in milliseconds) between retry attempts for queued logs.
+	 * @param {number} [_options.maxBulkLog] - Optional. The maximum number of logs to send in a single bulk request.
+	 * @throws {Error} If `appName`, `apiSecret`, or the API URL are missing.
 	 */
 	constructor(_options) {
 		if (!_options?.appName || !_options?.apiSecret) {
@@ -111,22 +147,31 @@ class ChatterboxSDK {
 			);
 		}
 
+		// Explicit option wins over the env var so the SDK is usable as a plain
+		// library, without requiring the host app to define env vars.
+		this.CHATTERBOX_API_URL = _options.apiUrl || config.CHATTERBOX_API_URL;
+		if (!this.CHATTERBOX_API_URL) {
+			throw new Error(
+				"ChatterboxSDK needs your Chatterbox server URL. Pass `apiUrl` " +
+					"(e.g. { apiUrl: 'https://logs.example.com' }) or set CHATTERBOX_API_URL."
+			);
+		}
+
 		this.CHATTERBOX_APP_NAME = _options.appName;
 		this.CHATTERBOX_API_SECRET = _options.apiSecret;
 
 		this.LOG_FILE = _options?.logFile || config.LOG_FILE;
 
-		const dataDirPath = path.join(__dirname, "data");
+		// Where the retry queue is persisted. This must NOT live inside the
+		// package directory: when the SDK is installed, that is node_modules —
+		// often read-only in containers and wiped on every reinstall.
+		this.DATA_DIR = resolveDataDir(_options?.dataDir);
 
-		if (!fs.existsSync(dataDirPath)) {
-			console.log(
-				`[ChatterboxSDK] Data directory not found. Creating it at: ${dataDirPath}`
-			);
-
-			fs.mkdirSync(dataDirPath, { recursive: true });
+		if (!fs.existsSync(this.DATA_DIR)) {
+			fs.mkdirSync(this.DATA_DIR, { recursive: true });
 		}
 
-		const pathToLogFile = path.join(dataDirPath, this.LOG_FILE);
+		const pathToLogFile = path.join(this.DATA_DIR, this.LOG_FILE);
 
 		// Load existing queued logs from file
 		try {
@@ -220,7 +265,7 @@ class ChatterboxSDK {
 	saveQueue = async () => {
 		try {
 			fs.writeFileSync(
-				path.join(__dirname, "data", this.LOG_FILE),
+				path.join(this.DATA_DIR, this.LOG_FILE),
 				JSON.stringify(this.logQueue, null, 2),
 				"utf8"
 			);
@@ -429,10 +474,13 @@ class ChatterboxSDK {
  * @param {string} [options.logFile] - The log file path.
  * @param {number} [options.retryDelayMS] - The retry delay in milliseconds.
  * @param {number} [options.maxBulkLog] - The maximum number of logs to send in bulk.
+ * @param {string} [options.socketPath] - Override the Unix socket path.
+ * @param {string} [options.dataDir] - Override where the retry queue is stored.
  * @returns {net.Server} The Node.js `net.Server` instance.
  */
 const startChatterboxServer = (options) => {
-	const socketPath = path.join(os.tmpdir(), "chatterbox.sock");
+	// Per-app socket so multiple applications on one host don't collide.
+	const socketPath = resolveSocketPath(options?.appName, options?.socketPath);
 
 	if (fs.existsSync(socketPath)) {
 		fs.unlinkSync(socketPath);
@@ -505,4 +553,9 @@ const startChatterboxServer = (options) => {
  * @property {ChatterboxSDK} ChatterboxSDK - The SDK class for interacting with the Chatterbox logging service.
  * @property {function(Object): net.Server} startChatterboxServer - A function to initialize and start the Chatterbox logging server.
  */
-module.exports = { ChatterboxSDK, startChatterboxServer };
+module.exports = {
+	ChatterboxSDK,
+	startChatterboxServer,
+	resolveSocketPath,
+	resolveDataDir,
+};

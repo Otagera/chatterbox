@@ -1,19 +1,62 @@
 {
 	"name": "@chatterbox/chatterbox-sdk",
-	"version": "1.0.0",
-	"description": "",
+	"version": "1.1.0",
+	"description": "Client SDK for shipping application logs to a Chatterbox server",
 	"main": "index.js",
-	"scripts": {
-		"start": "node example.js",
-		"dev": "nodemon example.js --ignore data/",
-		"prepare": "tsc  chatterboxTransport.mjs --declaration --emitDeclarationOnly --allowJs"
+	"types": "index.d.ts",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"default": "./index.js"
+		},
+		"./chatterboxTransport.mjs": {
+			"types": "./chatterboxTransport.d.mts",
+			"default": "./chatterboxTransport.mjs"
+		},
+		"./package.json": "./package.json"
 	},
-	"keywords": [],
-	"author": "",
+	"files": [
+		"index.js",
+		"index.d.ts",
+		"config.js",
+		"config.d.ts",
+		"chatterboxTransport.mjs",
+		"chatterboxTransport.d.mts",
+		"README.md"
+	],
+	"engines": {
+		"node": ">=18"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Otagera/chatterbox.git",
+		"directory": "sdk"
+	},
+	"keywords": [
+		"logging",
+		"logs",
+		"pino",
+		"chatterbox",
+		"observability"
+	],
+	"author": "Othniel Agera",
 	"license": "ISC",
+	"scripts": {
+		"example": "node example.js"
+	},
 	"dependencies": {
+		"dotenv": "^16.4.7"
+	},
+	"peerDependencies": {
+		"pino": ">=9"
+	},
+	"peerDependenciesMeta": {
+		"pino": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
 		"colorette": "^2.0.20",
-		"dotenv": "^16.4.7",
 		"luxon": "^3.5.0",
 		"pino": "^9.6.0",
 		"pino-abstract-transport": "^2.0.0",

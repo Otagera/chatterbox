@@ -7,3 +7,6 @@ package-lock.json
 .env
 /.vscode
 .DS_Store
+
+# Chatterbox SDK on-disk retry queue
+.chatterbox/

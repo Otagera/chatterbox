@@ -1,0 +1,62 @@
+name: Publish SDK branch
+
+# npm cannot install from a subdirectory of a git repo, so we mirror `sdk/`
+# to a dedicated `sdk-dist` branch. Consumers then install with:
+#   npm i github:Otagera/chatterbox#sdk-dist
+# or pin a tag:
+#   npm i github:Otagera/chatterbox#sdk-v1.1.0
+on:
+  push:
+    branches: [main]
+    paths: ["sdk/**", ".github/workflows/sdk-release.yml"]
+  workflow_dispatch:
+
+jobs:
+  publish-sdk-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sanity-check the package
+        working-directory: sdk
+        run: |
+          node -e "
+            const p = require('./package.json');
+            if (p.scripts?.prepare) {
+              throw new Error('sdk/package.json must not define a prepare script — it runs on git installs and would break them.');
+            }
+            for (const f of ['index.js','index.d.ts','chatterboxTransport.mjs','README.md']) {
+              require('fs').accessSync(f);
+            }
+            console.log('ok:', p.name, p.version);
+          "
+          npm pack --dry-run
+
+      - name: Split sdk/ onto the sdk-dist branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          SPLIT_SHA=$(git subtree split --prefix=sdk HEAD)
+          git push --force origin "$SPLIT_SHA":refs/heads/sdk-dist
+          echo "Published sdk-dist -> $SPLIT_SHA"
+
+      - name: Tag the release (sdk-v<version>) if it doesn't exist
+        run: |
+          VERSION=$(node -p "require('./sdk/package.json').version")
+          TAG="sdk-v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists — skipping (bump sdk/package.json version to cut a new one)."
+          else
+            SPLIT_SHA=$(git subtree split --prefix=sdk HEAD)
+            git tag "$TAG" "$SPLIT_SHA"
+            git push origin "$TAG"
+            echo "Tagged $TAG"
+          fi

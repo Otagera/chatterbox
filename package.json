@@ -10,14 +10,13 @@
 		"test": "jest",
 		"test:watch": "NODE_ENV=test jest --watch",
 		"tailwind:css": "postcss views/styles/tailwind.css -o views/styles/style.css",
-		"typecheckSDK": "tsc sdk/chatterboxTransport.js --declaration --emitDeclarationOnly --allowJs"
+		"typecheckSDK": "tsc sdk/chatterboxTransport.mjs --declaration --emitDeclarationOnly --allowJs"
 	},
 	"keywords": [],
 	"author": "Othniel Agera",
 	"license": "ISC",
 	"dependencies": {
 		"@bull-board/express": "^6.9.6",
-		"@chatterbox/chatterbox-sdk": "file:sdk",
 		"@mikro-orm/core": "^6.2.9",
 		"@mikro-orm/mongo-highlighter": "^1.0.0",
 		"@mikro-orm/mongodb": "^6.2.9",

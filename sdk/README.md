@@ -1,111 +1,117 @@
 # @chatterbox/chatterbox-sdk
 
-Client SDK for shipping your application's logs to a [Chatterbox](../README.md)
-server. It authenticates with a per-app API secret, batches logs, and
-transparently **queues + retries** anything that fails to send so no logs are
-lost when the server is briefly unavailable.
-
-There are two ways to use it:
-
-1. **Direct client** — call `sendLog` / `sendLogs` yourself. Simplest.
-2. **Pino transport** — drop-in structured logging via a Unix-socket forwarder,
-   for apps already using [pino](https://getpino.io).
+Ship your app's logs to a [Chatterbox](https://github.com/Otagera/chatterbox)
+server. Authenticates with a per-app API secret, batches sends, and
+**queues + retries on disk** so nothing is lost while the server is down.
 
 ---
 
-## Install
+## 1. Install
+
+The SDK lives in the `sdk/` folder of the Chatterbox repo and is published to a
+dedicated `sdk-dist` branch (npm can't install from a subdirectory, so CI mirrors
+it there). Install straight from GitHub — no registry, no auth:
 
 ```bash
-npm install @chatterbox/chatterbox-sdk
+npm i github:Otagera/chatterbox#sdk-dist
 ```
 
-## Get credentials
-
-Create an application on your Chatterbox server to obtain an API secret:
+Pin a version instead of tracking latest:
 
 ```bash
-# 1. Register / identify the user
+npm i github:Otagera/chatterbox#sdk-v1.1.0
+```
+
+## 2. Get credentials
+
+On your Chatterbox server, create an app to get an API secret:
+
+```bash
+# 1. register / identify yourself
 curl -X POST "$CHATTERBOX_API_URL/api/users/login" \
   -H "Content-Type: application/json" \
   -d '{ "email": "you@example.com" }'
 
-# 2. Create an app — the response contains `apiSecret`
+# 2. create the app — the response contains `apiSecret`
 curl -X POST "$CHATTERBOX_API_URL/api/users/apps" \
   -H "Content-Type: application/json" \
   -d '{ "email": "you@example.com", "appName": "my-service" }'
 ```
 
-Set these in your environment (see [`.env.example`](./.env.example)):
-
-```
-CHATTERBOX_API_URL=http://localhost:3005
-CHATTERBOX_APP_NAME=my-service
-CHATTERBOX_API_SECRET=chbxsk_..._ZEE
-```
-
----
-
-## 1. Direct client
+## 3. Send logs
 
 ```js
 const { ChatterboxSDK } = require("@chatterbox/chatterbox-sdk");
 
 const chatterbox = new ChatterboxSDK({
-  appName: process.env.CHATTERBOX_APP_NAME,
+  apiUrl: "https://logs.example.com",   // your Chatterbox server
+  appName: "my-service",
   apiSecret: process.env.CHATTERBOX_API_SECRET,
 });
 
-// Required fields: level, name, key, time, appName. `data` is any JSON payload.
 await chatterbox.sendLog({
-  level: "info",
+  level: "info",                 // info | warn | error | debug | trace | fatal
   name: "my-service",
-  key: "USER_SIGNUP",
+  key: "USER_SIGNUP",            // short event key
   time: Date.now(),
-  data: { userId: 42, plan: "pro" },
   appName: "my-service",
+  data: { userId: 42, plan: "pro" },   // any JSON — encrypted at rest
 });
 
-// Bulk send
-await chatterbox.sendLogs([ /* ...log objects... */ ]);
-
-// Flush the retry queue and stop the timer before your process exits
+// on shutdown: flush the retry queue and stop the timer
 await chatterbox.close();
 ```
 
-A complete, runnable version is in [`example.js`](./example.js):
-
-```bash
-cp .env.example .env   # then fill in the values
-node example.js
-```
-
-### API
-
-| Method | Description |
-| --- | --- |
-| `new ChatterboxSDK({ appName, apiSecret, logFile?, retryDelayMS?, maxBulkLog? })` | Create a client. Starts a background retry timer. |
-| `sendLog(log)` | Send one log. Returns `true`/`false`. Queues on failure. |
-| `sendLogs(logs)` | Send an array of logs in one bulk request. |
-| `close()` | Flush queued logs and stop the retry timer. Call on shutdown. |
-
-Failed logs are persisted to `data/<logFile>` and retried every
-`retryDelayMS` (default 10s), so a temporary outage never drops logs.
+That's the whole thing. A complete runnable version is in
+[`example.js`](./example.js).
 
 ---
 
-## 2. Pino transport (drop-in logging)
+## API
 
-For apps that log with pino, start the forwarder once at boot and add the
-transport target. Log lines are written to a local Unix socket and shipped to
-Chatterbox in the background.
+| Method | Description |
+| --- | --- |
+| `new ChatterboxSDK(options)` | Create a client. Starts a background retry timer. |
+| `sendLog(log)` | Send one log. Returns `true`/`false`; queues on failure. |
+| `sendLogs(logs)` | Send an array in one bulk request. |
+| `close()` | Flush the queue and stop the timer. Call on shutdown. |
+
+### Options
+
+| Option | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `apiUrl` | ✅ | `CHATTERBOX_API_URL` env | Base URL of your server. Throws if missing. |
+| `appName` | ✅ | — | Must match the app you created. |
+| `apiSecret` | ✅ | — | From `POST /api/users/apps`. |
+| `dataDir` | — | `<cwd>/.chatterbox` | Where the retry queue is persisted. |
+| `logFile` | — | `logQueue.json` | Retry queue file name. |
+| `retryDelayMS` | — | `10000` | How often queued logs are retried. |
+| `maxBulkLog` | — | `10` | Batch size when flushing the queue. |
+
+### Log shape
+
+Required: `level`, `name`, `key`, `time`, `appName`. Optional: `data`
+(encrypted at rest), `traceId`, `context`, and — for HTTP logs — `request`,
+`response`, `timeTaken`.
+
+> Add `.chatterbox/` to your `.gitignore`; that's where failed logs are parked.
+
+---
+
+## Pino transport (optional)
+
+If your app already uses [pino](https://getpino.io), you can forward logs
+automatically. A local forwarder owns a Unix socket and ships batches in the
+background. `pino` is an optional peer dependency — install it yourself.
 
 ```js
 const { pino } = require("pino");
 const { startChatterboxServer } = require("@chatterbox/chatterbox-sdk");
 
-// Start the forwarder (owns the socket + retry queue).
+// Start the forwarder BEFORE creating the logger so the socket is ready.
 startChatterboxServer({
-  appName: process.env.CHATTERBOX_APP_NAME,
+  apiUrl: "https://logs.example.com",
+  appName: "my-service",
   apiSecret: process.env.CHATTERBOX_API_SECRET,
 });
 
@@ -114,10 +120,9 @@ const logger = pino({
     targets: [
       {
         target: "@chatterbox/chatterbox-sdk/chatterboxTransport.mjs",
-        options: { appName: process.env.CHATTERBOX_APP_NAME },
-      },
-      // keep console output too
-      { target: "pino-pretty" },
+        options: { appName: "my-service" },   // must match the forwarder
+        },
+      { target: "pino-pretty" },              // keep console output
     ],
   },
 });
@@ -125,6 +130,21 @@ const logger = pino({
 logger.info({ userId: 42 }, "USER_SIGNUP");
 ```
 
-> The transport is best-effort: if the forwarder socket isn't up yet it drops
-> the line rather than crashing your app. Call `startChatterboxServer(...)`
-> before creating the logger so the socket is ready.
+The socket path is derived from `appName`
+(`<tmp>/chatterbox-<app-name>.sock`), so multiple apps on one host don't
+collide. Override with the `socketPath` option or `CHATTERBOX_SOCKET_PATH`.
+
+The transport is **best-effort**: if the forwarder isn't up it drops the line
+rather than crashing your app.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+| --- | --- |
+| `needs your Chatterbox server URL` | Pass `apiUrl` or set `CHATTERBOX_API_URL`. |
+| `Application: X not found` | `appName` doesn't match, or the secret belongs to another app. |
+| `401 / Invalid API key format` | `apiSecret` is wrong or truncated — regenerate it. |
+| Logs queue but never send | Server unreachable. Check `apiUrl`; queued logs retry automatically. |
+| `Could not connect to the Chatterbox logging server` | Transport mode only — call `startChatterboxServer(...)` first, with the same `appName`. |
