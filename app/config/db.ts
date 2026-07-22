@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import { MikroORM, Options } from "@mikro-orm/mongodb";
 import { MongoHighlighter } from "@mikro-orm/mongo-highlighter";
 import { IServices } from "../interfaces";
-import { Log, AppKey, User, OTP, AlertRule } from "../entities";
+import { Log, AppKey, User, OTP, AlertRule, LogRollup } from "../entities";
 import config from "./config";
 
 dotenv.config();
@@ -35,5 +35,6 @@ export const initORM = async (options?: Options): Promise<IServices> => {
 		users: orm.em.getRepository(User),
 		OTPs: orm.em.getRepository(OTP),
 		alertRules: orm.em.getRepository(AlertRule),
+		logRollups: orm.em.getRepository(LogRollup),
 	});
 };

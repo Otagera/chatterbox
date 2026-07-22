@@ -95,6 +95,19 @@ export const init = (async () => {
 				removeOnFail: 20,
 			}
 		);
+
+		// Roll raw logs into hourly buckets so long-range charts stay fast and
+		// history outlives the 30-day TTL on the log collection.
+		await queueServices.defaultQueueLib.addJob(
+			"rollupLogs",
+			{ meta: {}, worker: "rollupLogs" },
+			{
+				repeat: { every: Number(process.env.ROLLUP_INTERVAL_MS) || 900_000 },
+				jobId: "log-rollup",
+				removeOnComplete: 20,
+				removeOnFail: 20,
+			}
+		);
 	}
 
 	// Liveness probe. Declared before the HTTP logger so container healthchecks

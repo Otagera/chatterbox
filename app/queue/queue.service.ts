@@ -17,7 +17,8 @@ type WorkerTypes =
 	| "sendOTPEmail"
 	| "welcomeEmail"
 	| "evaluateAlerts"
-	| "sendAlertEmail";
+	| "sendAlertEmail"
+	| "rollupLogs";
 // The lib that contain adding the job and getting the queue
 export class QueueLib {
 	_queue: Queue;

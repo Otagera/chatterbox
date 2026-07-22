@@ -8,7 +8,7 @@ import { ZodError, z } from "zod";
 import { services } from "../config/db";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
-import { AlertMetric, AlertRule, AppKey, Log } from "../entities";
+import { AlertMetric, AlertRule, AppKey, Log, LogRollup } from "../entities";
 import { decryptObj, hashLogintoken, maskKey } from "../utils/security.util";
 import { escapeHtml as esc } from "../utils/html.util";
 import logger from "../utils/logger.util";
@@ -347,6 +347,82 @@ const renderTrace = (traceId: string, logs: any[]): string => {
 	}</div>
 		</div>
 		<div class="cb-trace">${items}</div>`;
+};
+
+/**
+ * Volume + error-rate charts built from hourly rollups instead of raw logs.
+ *
+ * Returns null when no rollups cover the window (e.g. the job hasn't run yet),
+ * so callers can fall back to scanning raw logs.
+ */
+export const chartsFromRollups = async (
+	appName: string,
+	since: Date,
+	unit: BucketUnit
+): Promise<{ volume: ChartData; errorRate: ChartData } | null> => {
+	const rows: { _id: { bucket: Date; level: string }; n: number }[] =
+		await services.orm.em.aggregate(LogRollup, [
+			{ $match: { appName, bucket: { $gte: since } } },
+			{
+				$group: {
+					_id: {
+						bucket: { $dateTrunc: { date: "$bucket", unit } },
+						level: "$level",
+					},
+					n: { $sum: "$count" },
+				},
+			},
+			{ $sort: { "_id.bucket": 1 } },
+		]);
+
+	if (!rows.length) return null;
+
+	// bucket label -> level -> count
+	const byBucket = new Map<string, Record<string, number>>();
+	rows.forEach((r) => {
+		const label = bucketLabel(r._id.bucket, unit);
+		const entry = byBucket.get(label) || {};
+		entry[r._id.level] = (entry[r._id.level] || 0) + r.n;
+		byBucket.set(label, entry);
+	});
+
+	const labels = Array.from(byBucket.keys()).sort();
+
+	const datasets: ChartDataset[] = [];
+	KNOWN_LEVEL_KEYS.forEach((levelKey) => {
+		const cfg = LOG_LEVEL_CONFIG[levelKey as LevelKey];
+		if (!cfg) return;
+		datasets.push({
+			label: cfg.label,
+			data: labels.map((l) => byBucket.get(l)?.[levelKey] || 0),
+			backgroundColor: cfg.color,
+		});
+	});
+
+	const errorRates = labels.map((l) => {
+		const entry = byBucket.get(l) || {};
+		const total = Object.values(entry).reduce((a, b) => a + b, 0);
+		const errors = (entry.error || 0) + (entry.fatal || 0);
+		return total ? parseFloat(((errors / total) * 100).toFixed(2)) : 0;
+	});
+
+	return {
+		volume: { labels, datasets },
+		errorRate: {
+			labels,
+			datasets: [
+				{
+					label: "Error Rate (%)",
+					data: errorRates,
+					backgroundColor: "rgba(255, 99, 132, 0.5)",
+					borderColor: "rgb(255, 99, 132)",
+					tension: 0.1,
+					borderWidth: 1,
+					fill: true,
+				},
+			],
+		},
+	};
 };
 
 export type EndpointStat = {
@@ -806,12 +882,19 @@ router.get(
 			const since = sinceFor(range);
 			const unit = bucketFor(range);
 
+			// Long windows read pre-aggregated rollups; short ones stay on raw logs
+			// for freshness. Falls back to raw if rollups don't cover the window yet.
+			const rollups =
+				unit === "day"
+					? await chartsFromRollups(appName as string, since, unit)
+					: null;
+
 			const [logVolumeData, logLevelData, topKeysData, errorRateData, endpoints] =
 				await Promise.all([
-					aggregateLogVolume(appName as string, since, unit),
+					rollups?.volume ?? aggregateLogVolume(appName as string, since, unit),
 					aggregateLogLevels(appName as string, since),
 					aggregateTopKeys(appName as string, since, 10),
-					aggregateErrorRate(appName as string, since, unit),
+					rollups?.errorRate ?? aggregateErrorRate(appName as string, since, unit),
 					aggregateEndpoints(appName as string, since),
 				]);
 
