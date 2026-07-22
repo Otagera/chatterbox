@@ -26,9 +26,13 @@ services:
       DB_URL: mongodb://mongo:27017
       REDIS_URL: redis://redis:6379
       DB_NAME: ${DB_NAME:-chatterbox}
-      # Required — the app refuses to start in production without these.
-      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in Coolify}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in Coolify}
+      # Required — set both in Coolify. Deliberately plain ${VAR} rather than
+      # ${VAR:?...}: the :? form hard-fails compose parsing when the variable
+      # isn't in scope, which breaks Coolify's own parse of this file (it reads
+      # it to build the service list and proxy labels). The app already fails
+      # fast on missing values in production, so nothing is lost here.
+      SESSION_SECRET: ${SESSION_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       # Email (Resend)
       PROCESS_EMAILS: ${PROCESS_EMAILS:-true}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
