@@ -12,6 +12,9 @@
 		"tailwind:css": "postcss views/styles/tailwind.css -o views/styles/style.css",
 		"typecheckSDK": "tsc sdk/chatterboxTransport.mjs --declaration --emitDeclarationOnly --allowJs"
 	},
+	"engines": {
+		"node": ">=20"
+	},
 	"keywords": [],
 	"author": "Othniel Agera",
 	"license": "ISC",

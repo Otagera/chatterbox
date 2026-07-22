@@ -1,0 +1,72 @@
+# Chatterbox stack, deployed by Coolify.
+#
+# Coolify runs this compose file and provides:
+#   - the reverse proxy + TLS for your domain (so there is no proxy service here)
+#   - environment variables (set them in the Coolify UI, not in a .env file)
+#
+# The app image is built and pushed to GHCR by .github/workflows/deploy.yml;
+# Coolify pulls it. Point the domain at the `app` service on port 3005.
+#
+# Local testing:
+#   APP_IMAGE=chatterbox:local SESSION_SECRET=x ENCRYPTION_KEY=y docker compose up -d
+
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/otagera/chatterbox:latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3005"
+      # Internal service names on the compose network.
+      DB_URL: mongodb://mongo:27017
+      REDIS_URL: redis://redis:6379
+      DB_NAME: ${DB_NAME:-chatterbox}
+      # Required — the app refuses to start in production without these.
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in Coolify}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in Coolify}
+      # Email (Resend)
+      PROCESS_EMAILS: ${PROCESS_EMAILS:-true}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_SENDER: ${RESEND_SENDER:-}
+      # Queue dashboard at /worker/admin. Job payloads contain OTP codes, so
+      # without BOTH of these the dashboard stays disabled in production.
+      BULL_BOARD_USER: ${BULL_BOARD_USER:-}
+      BULL_BOARD_PASSWORD: ${BULL_BOARD_PASSWORD:-}
+      # Optional: strengthens token/OTP hashes (changing it invalidates existing ones).
+      HASH_PEPPER: ${HASH_PEPPER:-}
+    # Coolify's proxy routes your domain here; no host ports are published.
+    expose:
+      - "3005"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongo-data:
+  redis-data:

@@ -11,7 +11,8 @@ export const initORMOption = {
 	entitiesTs: ["./entities"],
 	dbName: config.dbName,
 	highlighter: new MongoHighlighter(),
-	debug: true,
+	// Query logging is useful locally but floods production logs.
+	debug: config.env !== "production",
 	clientUrl: config.dbURL,
 	ensureIndexes: true,
 };

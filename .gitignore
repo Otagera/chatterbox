@@ -3,8 +3,11 @@ temp
 node_modules
 .idea
 dev.sqlite
-package-lock.json
+# Never commit real env files; the *.example files are the templates.
 .env
+.env.*
+!.env.example
+!.env.production.example
 /.vscode
 .DS_Store
 

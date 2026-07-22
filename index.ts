@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import express, { NextFunction, Request, Response } from "express";
 import bodyParser from "body-parser";
+import crypto from "crypto";
 import path from "path";
 import dotenv from "dotenv";
 import { RequestContext } from "@mikro-orm/mongodb";
@@ -23,6 +24,46 @@ dotenv.config();
 const app = express();
 const PORT = config.port;
 
+/** Length-safe, constant-time string comparison. */
+const safeEqual = (a: string, b: string): boolean => {
+	const ab = Buffer.from(a);
+	const bb = Buffer.from(b);
+	return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+};
+
+/**
+ * Guards the BullMQ dashboard with HTTP Basic auth.
+ *
+ * Queue job payloads include OTP codes (see the sendOTPEmail job), so this
+ * route must never be publicly reachable. It fails closed: if credentials are
+ * not configured, the dashboard is disabled entirely outside development.
+ */
+const bullBoardAuth = (req: Request, res: Response, next: NextFunction) => {
+	const user = process.env.BULL_BOARD_USER;
+	const password = process.env.BULL_BOARD_PASSWORD;
+
+	if (!user || !password) {
+		if (config.env === "development") return next();
+		return res.status(404).json({ message: "No route found" });
+	}
+
+	const [scheme, encoded] = (req.headers.authorization || "").split(" ");
+	if (scheme === "Basic" && encoded) {
+		const [suppliedUser, suppliedPassword] = Buffer.from(encoded, "base64")
+			.toString()
+			.split(":");
+		if (
+			safeEqual(suppliedUser ?? "", user) &&
+			safeEqual(suppliedPassword ?? "", password)
+		) {
+			return next();
+		}
+	}
+
+	res.setHeader("WWW-Authenticate", 'Basic realm="Chatterbox queues"');
+	return res.status(401).send("Authentication required");
+};
+
 export const init = (async () => {
 	const services = await initORM(initORMOption);
 
@@ -41,8 +82,12 @@ export const init = (async () => {
 	new QueueWorkersHandler(constants.BULL_QUEUE_NAMES.DEFAULT);
 	new QueueWorkersHandler(constants.BULL_QUEUE_NAMES.EMAIL);
 
-	// To make sure /worker/admin points to the bull queue dashboard
-	app.use("/worker/admin", serverAdapter.getRouter());
+	// Liveness probe. Declared before the HTTP logger so container healthchecks
+	// don't flood the logs.
+	app.get("/healthz", (_req, res) => res.status(200).json({ status: "ok" }));
+
+	// Queue dashboard — behind Basic auth (job payloads contain OTPs).
+	app.use("/worker/admin", bullBoardAuth, serverAdapter.getRouter());
 	app.use(logger.httpLoggerInstance);
 	app.use(express.json());
 	app.set("trust proxy", 1);
