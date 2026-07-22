@@ -3,9 +3,28 @@ import net from "net";
 import path from "path";
 import os from "os";
 
-const socketPath = path.join(os.tmpdir(), "chatterbox.sock");
-
 const blockedUrls = ["/api/logs", "/api/logs/bulk"];
+
+/**
+ * Resolves the Unix socket shared with the Chatterbox forwarder. Derived per
+ * application so several apps on one host don't fight over a single socket.
+ *
+ * NOTE: this must stay in sync with `resolveSocketPath` in index.js — ESM
+ * cannot import the CJS module at transport-load time.
+ *
+ * @param {string} appName
+ * @param {string} [explicit]
+ * @returns {string}
+ */
+const resolveSocketPath = (appName, explicit) => {
+	if (explicit) return explicit;
+	if (process.env.CHATTERBOX_SOCKET_PATH) return process.env.CHATTERBOX_SOCKET_PATH;
+	const slug = String(appName || "default")
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]+/g, "-")
+		.slice(0, 64);
+	return path.join(os.tmpdir(), `chatterbox-${slug}.sock`);
+};
 
 /**
  * Creates a writable stream for Pino to transport logs.
@@ -17,6 +36,7 @@ const blockedUrls = ["/api/logs", "/api/logs/bulk"];
  * @returns {Promise<Writable>} A Promise that resolves to our custom Writable stream.
  */
 export default async function (opts) {
+	const socketPath = resolveSocketPath(opts?.appName, opts?.socketPath);
 	const client = net.createConnection({ path: socketPath });
 
 	// Only warn about connection problems once, to avoid flooding the console
