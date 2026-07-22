@@ -7,7 +7,6 @@ import {
 	maskKey,
 	encrypt,
 	decrypt,
-	getKeyAndIV,
 } from "../../utils/security.util";
 
 describe("Security Utilities", () => {
@@ -87,6 +86,14 @@ describe("Security Utilities", () => {
 			const decryptedObj = JSON.parse(decrypt(encryptedObj, appId));
 
 			expect(decryptedObj).toEqual(plainObject);
+		});
+
+		it("should produce different ciphertexts for identical plaintext (random IV)", () => {
+			const a = encrypt(plaintext, appId);
+			const b = encrypt(plaintext, appId);
+			expect(a).not.toBe(b);
+			expect(decrypt(a, appId)).toBe(plaintext);
+			expect(decrypt(b, appId)).toBe(plaintext);
 		});
 
 		it("should fail decryption with the wrong appId", () => {

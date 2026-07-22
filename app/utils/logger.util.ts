@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Request, Response } from "express";
 import {
 	pino,
+	stdSerializers,
 	LoggerOptions,
 	Logger,
 	SerializedResponse,
@@ -10,19 +11,13 @@ import {
 import { pinoHttp } from "pino-http";
 import { green, isColorSupported } from "colorette";
 import { DateTime } from "luxon";
-import { startChatterboxServer } from "@chatterbox/chatterbox-sdk";
 
 import { ChatterboxConfigType, ChatterboxKey } from "../interfaces/IUtil";
 import config from "../config/config";
 
-startChatterboxServer({
-	appName: config.chatterbox.appName,
-	apiSecret: config.chatterbox.APISecret,
-	logFile:
-		process.env.NODE_ENV === "test"
-			? "chatterbox-queue-test.json"
-			: "chatterbox-queue.json",
-});
+// NOTE: Chatterbox does not log to itself. The Chatterbox SDK (see ./sdk) is for
+// *other* applications to ship their logs here; this server just writes its own
+// logs to the console via pino-pretty.
 
 class PinoLogger {
 	httpLoggerInstance;
@@ -105,16 +100,9 @@ class PinoLogger {
 	}
 
 	_getLogDestination() {
-		const targets: any = [
-			{
-				target: "@chatterbox/chatterbox-sdk/chatterboxTransport.mjs",
-				options: {
-					appName: this._config.appName,
-					apiSecret: process.env.CHATTERBOX_API_SECRET,
-					fallbackQueueFilePath: "chatterbox-queue.json",
-				},
-			},
-		];
+		// Chatterbox writes its own logs to the console only — it is not a client
+		// of its own logging API.
+		const targets: any = [];
 
 		if (this._config.enableConsoleLogs) {
 			targets.push({
@@ -180,7 +168,7 @@ class PinoLogger {
 				};
 			},
 			serializers: {
-				err: pino.stdSerializers.err,
+				err: stdSerializers.err,
 				req: (req: SerializedRequest) => {
 					return process.env.NODE_ENV === "development"
 						? `${req.method} ${req.url}`

@@ -5,12 +5,12 @@ import fs from "fs";
 import path from "path";
 import { ZodError, z } from "zod";
 
-import { paginationState } from "../../index";
 import { services } from "../config/db";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
 import { AppKey, Log } from "../entities";
 import { decryptObj, hashLogintoken, maskKey } from "../utils/security.util";
+import { escapeHtml as esc } from "../utils/html.util";
 import logger from "../utils/logger.util";
 import {
 	OTPService,
@@ -72,7 +72,7 @@ const renderError = (message: string): string => {
 	logger.error(message, "UI-RENDER-ERROR");
 	return `<div class="my-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md shadow-sm">
             <p class="font-medium">Error:</p>
-            <p>${message}</p>
+            <p>${esc(message)}</p>
           </div>`;
 };
 
@@ -85,12 +85,15 @@ const getRecentLogs = async (appName: string, limit = 100) => {
 		}
 	);
 
-	paginationState.setCurrentCursor(logs.endCursor);
-	paginationState.setHasNextPage(logs.hasNextPage);
-	return logs.items.map((log) => {
+	const items = logs.items.map((log) => {
 		let levelStyle = getLevelStyle(log.level);
 		return { ...log, id: log._id, levelStyle };
 	});
+	return {
+		items,
+		nextCursor: logs.endCursor,
+		hasNextPage: logs.hasNextPage,
+	};
 };
 
 /**
@@ -430,10 +433,15 @@ router.get("/", authMiddleware, async (req: Request, res: Response) => {
 	try {
 		const { appName, user, email } = req.session;
 
-		const logs = await getRecentLogs(appName as string, LIMIT);
+		const { items, nextCursor, hasNextPage } = await getRecentLogs(
+			appName as string,
+			LIMIT
+		);
 
 		return res.render("index", {
-			logs,
+			logs: items,
+			nextCursor: nextCursor || "",
+			hasNextPage,
 			appName,
 			user: user,
 			email,
@@ -514,69 +522,78 @@ router.get("/login", async (req: Request, res: Response) => {
  * @returns {void} Sends an HTML string containing table rows of logs.
  * Sends an empty response if no more logs are available or an error message as HTML if an error occurs.
  */
-router.get("/view/get-more-logs", async (req: Request, res: Response) => {
-	if (!paginationState.getHasNextPage()) return res.send();
+router.get(
+	"/view/get-more-logs",
+	authMiddleware,
+	async (req: Request, res: Response) => {
+		try {
+			// Cursor is passed per-request (not held in shared module state) so that
+			// concurrent users don't corrupt each other's pagination. Logs are scoped
+			// to the authenticated session's appName to prevent cross-tenant leakage.
+			const appName = req.session.appName as string;
+			const after = (req.query.cursor as string) || undefined;
 
-	try {
-		const logsResult = await services.logs.findByCursor(
-			{},
-			{
-				first: LIMIT,
-				after: paginationState.getCurrentCursor() as string,
-				orderBy: { createdAt: "desc" },
-			}
-		);
+			const logsResult = await services.logs.findByCursor(
+				{ appName },
+				{
+					first: LIMIT,
+					after,
+					orderBy: { createdAt: "desc" },
+				}
+			);
 
-		paginationState.setCurrentCursor(logsResult.endCursor);
-		paginationState.setHasNextPage(logsResult.hasNextPage);
+			let logsHTML = ``;
 
-		let logsHTML = ``;
+			logsResult.items.forEach((log) => {
+				const formattedDate = log.createdAt;
+				const levelDisplayClasses = getLevelStyle(log.level);
 
-		logsResult.items.forEach((log) => {
-			const formattedDate = log.createdAt;
-			// ? new Date(log.createdAt).toLocaleString()
-			// : "N/A";
-			const levelDisplayClasses = getLevelStyle(log.level);
-
-			// Note: ensure log.id and log.key are properly escaped if they can contain HTML special characters.
-			// For simplicity here, assuming they are safe.
-			const logHTML = `
+				const logHTML = `
 				<tr class="hover:bg-gray-50 transition-colors duration-150">
-					<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${log.id}</td>
-					<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${log.key}</td>
-					<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-100" hx-get="/view/get-log-data/${log.id}" hx-target="this" role="button">
-						<span class="text-xs">${formattedDate}</span>
+					<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${esc(
+						log.id
+					)}</td>
+					<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${esc(
+						log.key
+					)}</td>
+					<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-100" hx-get="/view/get-log-data/${encodeURIComponent(
+						log.id
+					)}" hx-target="this" role="button">
+						<span class="text-xs">${esc(formattedDate)}</span>
 					</td>
 					<td class="px-6 py-4 whitespace-nowrap text-sm">
-							<span class="${levelDisplayClasses}">${log.level}</span>
+							<span class="${levelDisplayClasses}">${esc(log.level)}</span>
 					</td>
 				</tr>
 			`;
-			logsHTML = logsHTML.concat(logHTML);
-		});
+				logsHTML = logsHTML.concat(logHTML);
+			});
 
-		if (paginationState.getHasNextPage()) {
-			logsHTML = logsHTML.concat(
-				`<tr hx-get="/view/get-more-logs" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="this">
+			if (logsResult.hasNextPage) {
+				logsHTML = logsHTML.concat(
+					`<tr hx-get="/view/get-more-logs?cursor=${encodeURIComponent(
+						logsResult.endCursor || ""
+					)}" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="this">
           <td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base">Loading more...</td>
         </tr>
         `
-			);
-		} else {
-			logsHTML = logsHTML.concat(
-				`<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base font-semibold">END OF LOGS</td></tr>`
-			);
-		}
+				);
+			} else {
+				logsHTML = logsHTML.concat(
+					`<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base font-semibold">END OF LOGS</td></tr>`
+				);
+			}
 
-		return res.send(logsHTML);
-	} catch (error: any) {
-		const message =
-			error instanceof ZodError
-				? error.errors[0].message
-				: error?.message || "Something went wrong fetching more logs!!!";
-		return res.status(500).send(renderError(message));
+			return res.send(logsHTML);
+		} catch (error: any) {
+			const message =
+				error instanceof ZodError
+					? error.errors[0].message
+					: error?.message || "Something went wrong fetching more logs!!!";
+			return res.status(500).send(renderError(message));
+		}
 	}
-});
+);
 
 /**
  * @route GET /view/get-log-data/:id
@@ -642,11 +659,11 @@ router.get(
 			return res.send(
 				`
           <div class="px-6 py-4 text-sm text-gray-700 max-w-2xl mx-auto">
-            <span class="block text-xs text-gray-500 mb-2">Log Time: ${formattedTime}</span>
-            <pre class="block p-3 my-2 text-xs leading-relaxed text-gray-800 bg-gray-50 border border-gray-300 rounded-md whitespace-pre-wrap break-words overflow-auto shadow-sm">${JSON.stringify(
-							logDataToDisplay,
-							null,
-							2
+            <span class="block text-xs text-gray-500 mb-2">Log Time: ${esc(
+							formattedTime
+						)}</span>
+            <pre class="block p-3 my-2 text-xs leading-relaxed text-gray-800 bg-gray-50 border border-gray-300 rounded-md whitespace-pre-wrap break-words overflow-auto shadow-sm">${esc(
+							JSON.stringify(logDataToDisplay, null, 2)
 						)}</pre>
           </div>
         `
@@ -669,7 +686,10 @@ router.get(
  * @returns {void} Sends an HTML string containing table rows of matching logs.
  * Sends an error message as HTML if an error occurs.
  */
-router.post("/view/search", async (req: Request, res: Response) => {
+router.post(
+	"/view/search",
+	authMiddleware,
+	async (req: Request, res: Response) => {
 	const spec = z
 		.object({
 			startDate: z.string().datetime().optional(),
@@ -680,6 +700,10 @@ router.post("/view/search", async (req: Request, res: Response) => {
 		.required();
 	type specType = z.infer<typeof spec>;
 	const body = validateSpec<specType>(spec, req.body);
+	// Pagination cursor is passed per-request (not global module state) so
+	// concurrent searches don't clobber each other.
+	const cursor =
+		typeof req.body.cursor === "string" ? req.body.cursor : undefined;
 	let filter: {
 		appName?: string;
 		level?: string;
@@ -708,12 +732,9 @@ router.post("/view/search", async (req: Request, res: Response) => {
 	try {
 		const logsResult = await services.logs.findByCursor(filter, {
 			first: LIMIT,
-			after: paginationState.getCurrentCursor() as string,
+			after: cursor,
 			orderBy: { createdAt: "desc" },
 		});
-
-		paginationState.setCurrentCursor(logsResult.endCursor);
-		paginationState.setHasNextPage(logsResult.hasNextPage);
 
 		let logsHTML = ``;
 		if (logsResult.items.length === 0) {
@@ -721,34 +742,39 @@ router.post("/view/search", async (req: Request, res: Response) => {
 		} else {
 			logsResult.items.forEach((log) => {
 				const formattedDate = log.createdAt;
-				// ? new Date(log.createdAt).toLocaleString()
-				// : "N/A";
 				const levelDisplayClasses = getLevelStyle(log.level);
 
 				const logHTML = `
             <tr class="hover:bg-gray-50 transition-colors duration-150">
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${log.id}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${log.key}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-100" hx-get="/view/get-log-data/${log.id}" hx-target="this" role="button">
-                <span class="text-xs">${formattedDate}</span>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${esc(
+								log.id
+							)}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${esc(
+								log.key
+							)}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-100" hx-get="/view/get-log-data/${encodeURIComponent(
+								log.id
+							)}" hx-target="this" role="button">
+                <span class="text-xs">${esc(formattedDate)}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm">
-                <span class="${levelDisplayClasses}">${log.level}</span>
+                <span class="${levelDisplayClasses}">${esc(log.level)}</span>
               </td>
             </tr>
           `;
 				logsHTML = logsHTML.concat(logHTML);
 			});
 
-			if (paginationState.getHasNextPage()) {
+			if (logsResult.hasNextPage) {
 				logsHTML = logsHTML.concat(
 					`<tr id="more-search-logs" class="h-7">
 						<td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base h-7">
 							<p>Loading...</p>
 							<form class="collapse h-7" hx-post="/view/search" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="#more-search-logs">
-								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Level" name="level" list="levelDatalistOptions" value="${
+								<input type="hidden" name="cursor" value="${esc(logsResult.endCursor || "")}">
+								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Level" name="level" list="levelDatalistOptions" value="${esc(
 									body.level
-								}">
+								)}">
 								<datalist id="levelDatalistOptions">
 									<option value="info"></option>
 									<option value="error"></option>
@@ -757,20 +783,20 @@ router.post("/view/search", async (req: Request, res: Response) => {
 									<option value="fatal"></option>
 									<option value="debug"></option>
 								</datalist>
-								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Key" name="key" value="${
+								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Key" name="key" value="${esc(
 									body.key ? body.key : ""
-								}">
+								)}">
 								<div>
 									<label class="block text-sm font-medium text-gray-700 mb-1" for="startDate">Start Date:</label>
-									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="startDate" id="startDate" value="${
+									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="startDate" id="startDate" value="${esc(
 										body.startDate ? body.startDate : ""
-									}">
+									)}">
 								</div>
 								<div>
 									<label class="block text-sm font-medium text-gray-700 mb-1" for="endDate">Finish Date:</label>
-									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="endDate" id="endDate" value="${
+									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="endDate" id="endDate" value="${esc(
 										body.endDate ? body.endDate : ""
-									}">
+									)}">
 								</div>
 							</form>
 						</td>
@@ -792,7 +818,8 @@ router.post("/view/search", async (req: Request, res: Response) => {
 				: error?.message || "Something went wrong during search!!!";
 		return res.status(500).send(renderError(message));
 	}
-});
+	}
+);
 
 /**
  * Generates HTML for a list of applications.
@@ -819,7 +846,7 @@ const getApps = (apps: AppKey[], loginToken: string, email: string): string => {
           hx-swap="innerHTML" 
           hx-get="/view/apps?appName=${encodedAppName}&loginToken=${encodedLoginToken}"
           class="text-blue-600 hover:text-blue-800 underline cursor-pointer font-medium">
-            ${app.appName}
+            ${esc(app.appName)}
         </span>
         <div id="app-delete-box-${index}" class="text-sm">
           <button
@@ -970,10 +997,16 @@ const getViewApps = async (
 
 	const otpFormHTML = `
     <div id="otpFormContainer" class="bg-white p-6 w-full max-w-md mx-auto">
-      <h2 class="text-xl font-semibold text-gray-700 mb-1">Verify Access for <span class="font-bold">${appName}</span></h2>
-      <p class="text-sm text-gray-600 mb-4">An OTP has been sent to: ${displayEmail}</p>
+      <h2 class="text-xl font-semibold text-gray-700 mb-1">Verify Access for <span class="font-bold">${esc(
+				appName
+			)}</span></h2>
+      <p class="text-sm text-gray-600 mb-4">An OTP has been sent to: ${esc(
+				displayEmail
+			)}</p>
       <form hx-post="/view/otp?appName=${encodedAppName}" hx-swap="innerHTML" hx-target="#otpFormContainer">
-        <input type="email" name="email" class="hidden" value="${displayEmail}" />
+        <input type="email" name="email" class="hidden" value="${esc(
+					displayEmail
+				)}" />
         <div class="mb-4">
           <label for="otp" class="block text-sm font-medium text-gray-700 mb-1">Enter OTP</label>
           <input type="number" placeholder="6-digit OTP" name="otp" id="otp" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
@@ -1031,14 +1064,16 @@ router.get("/view/apps", async (req: Request, res: Response) => {
 			const newAppFormHTML = `
         <div id="newAppFormContainer" class="mt-6 bg-white shadow-md rounded-lg p-6 w-full max-w-md mx-auto">
           <h2 class="text-xl font-semibold text-gray-700 mb-4">Create New Application</h2>
-          <p class="text-sm text-gray-600 mb-4">For user: ${user.email}</p>
+          <p class="text-sm text-gray-600 mb-4">For user: ${esc(user.email)}</p>
           <form hx-post="/view/apps?loginToken=${encodedLoginToken}" hx-swap="innerHTML" hx-target="#newAppFormContainer">
-            <input type="email" name="email" class="hidden" value="${user.email}" />
+            <input type="email" name="email" class="hidden" value="${esc(
+							user.email
+						)}" />
             <div class="mb-4">
               <label for="appNameInput" class="block text-sm font-medium text-gray-700 mb-1">Application Name</label>
               <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
-            <input type="number" name="expires" class="hidden" value="10" /> <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
+            <input type="number" name="expires" class="hidden" value="31536000" /> <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
           </form>
           <div id="newAppErrorMsg" class="mt-3"></div>
         </div>
@@ -1082,7 +1117,7 @@ router.post("/view/apps", async (req: Request, res: Response) => {
 		.object({
 			email: z.string().email(),
 			appName: z.string(),
-			expires: z.coerce.number().int().min(1).default(10),
+			expires: z.coerce.number().int().min(1).default(31536000), // seconds (default: 1 year)
 		})
 		.required();
 	type bodySpecType = z.infer<typeof bodySpec>;
@@ -1114,21 +1149,27 @@ router.post("/view/apps", async (req: Request, res: Response) => {
           <h2 class="text-xl font-semibold text-gray-700 mb-4">Create New Application</h2>
           ${
 						userEmailForForm
-							? `<p class="text-sm text-gray-600 mb-4">For user: ${userEmailForForm}</p>`
+							? `<p class="text-sm text-gray-600 mb-4">For user: ${esc(
+									userEmailForForm
+							  )}</p>`
 							: ""
 					}
           <form hx-post="/view/apps?loginToken=${encodedLoginToken}" hx-swap="innerHTML" hx-target="#newAppFormContainer">
-            <input type="email" name="email" class="hidden" value="${userEmailForForm}" />
+            <input type="email" name="email" class="hidden" value="${esc(
+							userEmailForForm
+						)}" />
             <div class="mb-4">
               <label for="appNameInput" class="block text-sm font-medium text-gray-700 mb-1">Application Name</label>
-              <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="${
+              <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="${esc(
 								body.appName || ""
-							}" required />
+							)}" required />
             </div>
-            <input type="number" name="expires" class="hidden" value="10" />
+            <input type="number" name="expires" class="hidden" value="31536000" />
             <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
           </form>
-          <div id="newAppErrorMsg" class="mt-3 text-red-500 text-sm">${message}</div>
+          <div id="newAppErrorMsg" class="mt-3 text-red-500 text-sm">${esc(
+						message
+					)}</div>
         </div>
       `;
 		return res.send(newAppFormWithErrorHTML);
@@ -1157,7 +1198,7 @@ router.get(
 
 			const confirmationHTML = `
         <div class="flex justify-end items-center space-x-3 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-          <span class="text-sm text-yellow-700">Delete ${appName}?</span>
+          <span class="text-sm text-yellow-700">Delete ${esc(appName)}?</span>
           <button
             type="button"
             hx-trigger="click"
@@ -1296,7 +1337,9 @@ router.delete("/view/apps", async (req: Request, res: Response) => {
                 Add New Application
           </button>
         </div>
-        <p class="mt-4 text-sm text-green-600">Application '${appName}' deleted successfully.</p>
+        <p class="mt-4 text-sm text-green-600">Application '${esc(
+					appName
+				)}' deleted successfully.</p>
       </div>
     `;
 		return res.send(updatedAppsListHTML);
@@ -1401,10 +1444,16 @@ router.post("/view/otp", async (req: Request, res: Response) => {
 
 		const otpFormWithErrorHTML = `
       <div id="otpFormContainer" class="bg-white p-6 w-full max-w-md mx-auto">
-        <h2 class="text-xl font-semibold text-gray-700 mb-1">Verify Access for <span class="font-bold">${appNameQuery}</span></h2>
-        <p class="text-sm text-gray-600 mb-4">An OTP has been sent to: ${userEmailForForm}</p>
+        <h2 class="text-xl font-semibold text-gray-700 mb-1">Verify Access for <span class="font-bold">${esc(
+					appNameQuery
+				)}</span></h2>
+        <p class="text-sm text-gray-600 mb-4">An OTP has been sent to: ${esc(
+					userEmailForForm
+				)}</p>
         <form hx-post="/view/otp?appName=${encodedAppNameQuery}" hx-swap="innerHTML" hx-target="#otpFormContainer">
-          <input type="email" name="email" class="hidden" value="${userEmailForForm}" />
+          <input type="email" name="email" class="hidden" value="${esc(
+						userEmailForForm
+					)}" />
           <div class="mb-4">
             <label for="otp" class="block text-sm font-medium text-gray-700 mb-1">Enter OTP</label>
             <input type="number" placeholder="6-digit OTP" name="otp" id="otp" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
@@ -1439,20 +1488,26 @@ router.get("/view/authorize", async (req: Request, res: Response) => {
 		req.session.user = apiSecret;
 		const apiKeyDisplayHTML = `
       <div id="apiKeyDisplaySection" class="p-4 bg-gray-50 rounded-lg shadow-sm border border-gray-200">
-        <p class="text-sm font-medium text-gray-700 mb-1">Your API Secret Key for <span class="font-semibold">${appName}</span>:</p>
+        <p class="text-sm font-medium text-gray-700 mb-1">Your API Secret Key for <span class="font-semibold">${esc(
+					appName
+				)}</span>:</p>
         <div class="flex items-center space-x-2 bg-gray-100 p-2 rounded-md">
-          <span id="apiKeyToCopy" class="font-mono text-sm text-gray-800 break-all">${maskKey(
-						apiSecret
+          <span id="apiKeyToCopy" class="font-mono text-sm text-gray-800 break-all">${esc(
+						maskKey(apiSecret)
 					)}</span>
-          <button 
+          <button
             type="button"
             title="Copy API Key"
+            data-secret="${esc(apiSecret)}"
+            data-feedback-id="copyFeedback-${esc(appName)}"
             class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onclick="navigator.clipboard.writeText('${apiSecret}').then(() => { const el = document.getElementById('copyFeedback-${appName}'); if(el) { el.textContent = 'Copied!'; setTimeout(() => el.textContent = '', 2000); } }).catch(err => console.error('Failed to copy: ', err))">
+            onclick="(function(btn){ navigator.clipboard.writeText(btn.dataset.secret).then(function(){ var el = document.getElementById(btn.dataset.feedbackId); if(el){ el.textContent = 'Copied!'; setTimeout(function(){ el.textContent=''; }, 2000); } }).catch(function(err){ console.error('Failed to copy: ', err); }); })(this)">
             ${svgContent.replace("<svg", '<svg class="w-5 h-5 fill-current"')}
           </button>
         </div>
-        <span id="copyFeedback-${appName}" class="text-xs text-green-600 mt-1 h-4 block"></span>
+        <span id="copyFeedback-${esc(
+					appName
+				)}" class="text-xs text-green-600 mt-1 h-4 block"></span>
       </div>
     `;
 		logger.warn({ appName, email }, "UI-APP-DELETION-SUCCESS");

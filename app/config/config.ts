@@ -2,9 +2,40 @@ import { config as dotenvConfig } from "dotenv";
 
 dotenvConfig();
 
+const env = process.env.NODE_ENV || "development";
+const isProduction = env === "production";
+
+/**
+ * Reads a required secret from the environment. In production a missing value
+ * is fatal (fail fast) rather than silently falling back to a predictable
+ * default; outside production we allow a clearly-insecure dev fallback so the
+ * app still boots for local development and tests.
+ */
+const requireSecret = (name: string, devFallback: string): string => {
+	const value = process.env[name];
+	if (value && value.length > 0) {
+		return value;
+	}
+	if (isProduction) {
+		throw new Error(`Environment variable ${name} is required in production`);
+	}
+	return devFallback;
+};
+
 const config = {
-	env: process.env.NODE_ENV || "development",
-	sessionSecret: String(process.env.SESSION_SECRET),
+	env,
+	sessionSecret: requireSecret(
+		"SESSION_SECRET",
+		"chatterbox-insecure-dev-session-secret"
+	),
+	// Master key used to derive per-application encryption keys for log data.
+	encryptionKey: requireSecret(
+		"ENCRYPTION_KEY",
+		"chatterbox-insecure-dev-encryption-key"
+	),
+	// Server-side pepper mixed into token/OTP hashes. Empty by default so that
+	// existing hashes remain valid when unset; set HASH_PEPPER to strengthen.
+	hashPepper: process.env.HASH_PEPPER || "",
 	dbURL: process.env.DB_URL,
 	dbName: process.env.DB_NAME,
 	apiURL: "http://localhost",
@@ -18,10 +49,9 @@ const config = {
 		password: process.env.REDIS_PASSWORD || "",
 		url: process.env.REDIS_URL || "",
 	},
-	mailgun: {
-		apiKey: process.env.MAILGUN_API_KEY || "",
-		domain: process.env.MAILGUN_DOMAIN || "",
-		sender: process.env.MAILGUN_SENDER,
+	resend: {
+		apiKey: process.env.RESEND_API_KEY || "",
+		sender: process.env.RESEND_SENDER || "",
 	},
 	processEmails: process.env.PROCESS_EMAILS || false,
 

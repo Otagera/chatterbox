@@ -5,11 +5,13 @@
     "moduleResolution": "NodeNext",
     "declaration": true,
     "outDir": "./dist",
+    "rootDir": ".",
     "esModuleInterop": true,
+    "skipLibCheck": true,
     "strict": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["./app", "app/entities/.ts", "index.d.ts", "./sdk/index.js"],
+  "include": ["./index.ts", "./app", "types.d.ts", "./sdk/index.js"],
   "exclude": ["node_modules", "sdk/data"]
 }

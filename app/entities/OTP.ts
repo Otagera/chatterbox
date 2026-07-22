@@ -18,10 +18,19 @@ export class OTP extends BaseEntity {
 	@Enum({ items: () => OTPStatus, default: OTPStatus.ACTIVE })
 	status: OTPStatus = OTPStatus.ACTIVE;
 
-	constructor(otp: string, user: User, status = OTPStatus.ACTIVE) {
+	@Property()
+	expiresAt: Date;
+
+	constructor(
+		otp: string,
+		user: User,
+		expiresAt: Date,
+		status = OTPStatus.ACTIVE
+	) {
 		super();
 		this.otp = otp;
 		this.status = status;
 		this.user = user;
+		this.expiresAt = expiresAt;
 	}
 }

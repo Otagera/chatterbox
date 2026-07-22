@@ -1,26 +1,31 @@
-import nodemailer from "nodemailer";
-import mg from "nodemailer-mailgun-transport";
+import { Resend } from "resend";
 import config from "../config/config";
 
-const auth = {
-	auth: {
-		api_key: config.mailgun.apiKey,
-		domain: config.mailgun.domain,
-	},
-	ssl: false,
-};
+const resend = new Resend(config.resend.apiKey);
 
-const sendMail = async (mailOptions: {}) => {
-	try {
-		const nodemailerMailgun = nodemailer.createTransport(mg(auth));
+interface MailOptions {
+	to: string | string[];
+	subject: string;
+	html: string;
+}
 
-		return nodemailerMailgun.sendMail({
-			...mailOptions,
-			from: config.mailgun.sender,
-		});
-	} catch (error) {
+/**
+ * Sends an email via Resend. Templates are rendered to HTML by the caller (see
+ * the *.service.ts files) and passed in as `html`.
+ */
+const sendMail = async (mailOptions: MailOptions) => {
+	const { data, error } = await resend.emails.send({
+		from: config.resend.sender,
+		to: mailOptions.to,
+		subject: mailOptions.subject,
+		html: mailOptions.html,
+	});
+
+	if (error) {
 		throw error;
 	}
+
+	return data;
 };
 
 export default sendMail;

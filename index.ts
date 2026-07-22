@@ -23,19 +23,6 @@ dotenv.config();
 const app = express();
 const PORT = config.port;
 
-class PaginationState {
-	private currentCursor!: string | null;
-	private hasNextPage!: boolean;
-
-	constructor() {}
-	setCurrentCursor = (currentCursor: string | null) =>
-		(this.currentCursor = currentCursor);
-	setHasNextPage = (hasNextPage: boolean) => (this.hasNextPage = hasNextPage);
-	getCurrentCursor = () => this.currentCursor;
-	getHasNextPage = () => this.hasNextPage;
-}
-export const paginationState = new PaginationState();
-
 export const init = (async () => {
 	const services = await initORM(initORMOption);
 
@@ -62,12 +49,16 @@ export const init = (async () => {
 	app.use(
 		session({
 			secret: config.sessionSecret,
-			resave: true,
-			saveUninitialized: true,
-			// Only send over HTTPS in prod, Prevents client-side JS from reading the cookie & 24 hours
+			// Don't rewrite/create sessions that weren't modified — avoids session
+			// fixation and needless session-store writes for anonymous visitors.
+			resave: false,
+			saveUninitialized: false,
+			// Only send over HTTPS in prod, Prevents client-side JS from reading the
+			// cookie, SameSite=lax mitigates CSRF on state-changing requests, 24 hours.
 			cookie: {
 				secure: process.env.NODE_ENV === "production",
 				httpOnly: true,
+				sameSite: "lax",
 				maxAge: 24 * 60 * 60 * 1000,
 			},
 			store: MongoStore.create({
@@ -103,7 +94,8 @@ export const init = (async () => {
 	app.use(express.static(path.join(__dirname, "../views")));
 
 	app.use("/", ViewController);
-	app.use("/api", APIController);
+	// Rate limiting must run BEFORE the API routes, otherwise the controller
+	// handles (and responds to) the request and the limiter never executes.
 	app.use("/api", (req, res, next) => {
 		if (config.env === "test") {
 			next();
@@ -111,6 +103,7 @@ export const init = (async () => {
 			limiter(req, res, next);
 		}
 	});
+	app.use("/api", APIController);
 
 	app.use((_req, res) => res.status(404).json({ message: "No route found" }));
 	app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

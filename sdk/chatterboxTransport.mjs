@@ -19,11 +19,19 @@ const blockedUrls = ["/api/logs", "/api/logs/bulk"];
 export default async function (opts) {
 	const client = net.createConnection({ path: socketPath });
 
+	// Only warn about connection problems once, to avoid flooding the console
+	// when the logging server isn't running.
+	let hasWarned = false;
 	client.on("error", (err) => {
-		console.error(
-			"[Chatterbox Transport] Could not connect to the Chatterbox logging server. Is it running?",
-			err.message
-		);
+		if (!hasWarned) {
+			hasWarned = true;
+			console.error(
+				"[Chatterbox Transport] Could not connect to the Chatterbox logging server. Is it running?",
+				err.message
+			);
+		}
+		// The socket is destroyed on error; swallow it here so it isn't re-emitted
+		// as an unhandled 'error' event (which would crash the logging thread).
 	});
 
 	// Instead of returning the client directly, we create and return a new Writable stream. Pino will write logs to THIS stream.
@@ -48,7 +56,23 @@ export default async function (opts) {
 				}
 			} catch (e) {}
 
-			client.write(chunk, encoding, callback);
+			// If the connection failed or was torn down, self-logging is
+			// unavailable — drop this entry rather than writing to a destroyed
+			// socket (which throws ERR_STREAM_DESTROYED and crashes the logging
+			// thread). Logging to the app's own server is best-effort.
+			if (client.destroyed || client.writable === false) {
+				return callback();
+			}
+
+			try {
+				client.write(chunk, encoding, () => {
+					// Never surface transport write errors to Pino; that would crash
+					// the logging thread. Best-effort delivery only.
+					callback();
+				});
+			} catch (e) {
+				callback();
+			}
 		},
 	});
 

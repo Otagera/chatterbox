@@ -13,7 +13,7 @@ Chatterbox is a Node.js application designed for robust, secure log management a
 -   **User Management:**
     -   User login via email, initiating an OTP flow for application access.
     -   OTP (One-Time Password) based authentication for accessing specific application contexts within the UI and for retrieving API secrets programmatically.
-    -   Email-based OTPs sent using Mailgun (via BullMQ email queue) and Pug templates.
+    -   Email-based OTPs sent using Resend (via BullMQ email queue) and EJS templates.
     -   (Potential for Welcome emails via `welcomeEmail.service.ts`).
 -   **Application Management (Web UI & API):**
     -   Users can create, view, and manage multiple logging applications.
@@ -40,7 +40,7 @@ Chatterbox is a Node.js application designed for robust, secure log management a
 -   MongoDB instance (v4.4 or higher recommended)
 -   Redis instance (essential for BullMQ)
 -   PostCSS CLI (for Tailwind CSS, if modifying styles: `npm install -g postcss-cli`)
--   Mailgun account (for sending OTP and other emails).
+-   Resend account (for sending OTP and other emails).
 
 ## Installation
 
@@ -78,10 +78,9 @@ Chatterbox is a Node.js application designed for robust, secure log management a
     # Session Management
     SESSION_SECRET=your_very_strong_and_random_session_secret_here
 
-    # Email Configuration (Mailgun)
-    MAILGUN_API_KEY=your_mailgun_api_key
-    MAILGUN_DOMAIN=your_mailgun_domain # e.g., mg.yourdomain.com
-    MAILGUN_SENDER="Chatterbox <noreply@your_mailgun_domain.com>" # Sender email address
+    # Email Configuration (Resend)
+    RESEND_API_KEY=your_resend_api_key
+    RESEND_SENDER="Chatterbox <noreply@yourdomain.com>" # Verified sender address
 
     # Base URL (Optional, but can be useful for generating absolute links if needed)
     # BASE_URL=http://localhost:3005
@@ -304,7 +303,7 @@ The API allows for programmatic interaction with Chatterbox.
 -   **Background Queues:** BullMQ
 -   **Queue Datastore:** Redis
 -   **Queue Monitoring:** Bull Board
--   **Email Sending:** Nodemailer with Mailgun (`nodemailer-mailgun-transport`)
+-   **Email Sending:** Resend (`resend`) with EJS-rendered templates
 -   **Authentication & Session:** `express-session` with `connect-mongo` store, Custom API Key/Secret logic, OTP generation & email verification.
 -   **Data Validation:** Zod
 -   **Security Utilities:** Hashing functions for tokens/OTPs, custom encryption for log data.

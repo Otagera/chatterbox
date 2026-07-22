@@ -1,34 +1,28 @@
 import path from "path";
 import _ from "lodash";
+import ejs from "ejs";
 import sendMail from "./sendEmail.handler";
 
 const activationEmail = async (
 	recipient: string,
 	data: { firstName: string; lastName: string }
 ) => {
-	try {
-		const templatePath = path.join(
-			path.resolve(__dirname, "../../../views/email"),
-			`welcome.ejs`
-		);
-		const fullName = `${_.capitalize(data.firstName)} ${_.capitalize(
-			data.lastName
-		)}`;
-		const contextObj = { fullName };
-		const mailOptions = {
-			to: recipient,
-			subject: `Hi ${fullName}, Activate Your Account`,
-			template: {
-				name: templatePath,
-				engine: "ejs",
-				context: contextObj,
-			},
-		};
+	const templatePath = path.join(
+		path.resolve(__dirname, "../../../views/email"),
+		`welcome.ejs`
+	);
+	const fullName = `${_.capitalize(data.firstName)} ${_.capitalize(
+		data.lastName
+	)}`;
 
-		return sendMail(mailOptions);
-	} catch (error) {
-		throw error;
-	}
+	// Render the EJS template (with its partials) to HTML for Resend.
+	const html = await ejs.renderFile(templatePath, { fullName });
+
+	return sendMail({
+		to: recipient,
+		subject: `Hi ${fullName}, Activate Your Account`,
+		html,
+	});
 };
 
-module.exports = activationEmail;
+export default activationEmail;

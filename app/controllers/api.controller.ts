@@ -248,7 +248,7 @@ router.post("/users/apps", async (req: Request, res: Response) => {
 			.object({
 				email: z.string().email(),
 				appName: z.string(),
-				expires: z.coerce.number().int().min(1).default(10),
+				expires: z.coerce.number().int().min(1).default(31536000), // seconds (default: 1 year)
 			})
 			.required();
 		type specType = z.infer<typeof spec>;
@@ -354,7 +354,7 @@ router.post("/apps/authorize", async (req: Request, res: Response) => {
 			.object({
 				email: z.string().email(),
 				appName: z.string(),
-				expires: z.coerce.number().int().min(1).default(10),
+				expires: z.coerce.number().int().min(1).default(31536000), // seconds (default: 1 year)
 			})
 			.required();
 		type specType = z.infer<typeof spec>;
