@@ -1,224 +1,79 @@
-require("dotenv");
-const { randomUUID } = require("node:crypto");
-const { pino } = require("pino");
-const { pinoHttp } = require("pino-http");
-const { green, isColorSupported } = require("colorette");
-const { DateTime } = require("luxon");
-const { startChatterboxServer } = require("./index");
+/**
+ * Chatterbox SDK — usage example
+ * ------------------------------------------------------------------
+ * Demonstrates how another application ships its logs to a running
+ * Chatterbox server using the SDK's direct client.
+ *
+ * Prerequisites:
+ *   1. A running Chatterbox server (see the project README).
+ *   2. An application + API secret. Create one against the server:
+ *        POST /api/users/login   { "email": "you@example.com" }
+ *        POST /api/users/apps     { "email": "you@example.com", "appName": "my-service" }
+ *      The second response contains `apiSecret` — that is your CHATTERBOX_API_SECRET.
+ *   3. Copy `.env.example` to `.env` in this folder and fill in the CHATTERBOX_* values.
+ *
+ * Run:  node example.js
+ * ------------------------------------------------------------------
+ */
+require("dotenv").config();
+const { ChatterboxSDK } = require("./index");
 
-startChatterboxServer({
-	appName: process.env.CHATTERBOX_APP_NAME,
-	apiSecret: process.env.CHATTERBOX_API_SECRET,
-	logFile: "chatterbox-queue.json",
-});
+const appName = process.env.CHATTERBOX_APP_NAME;
+const apiSecret = process.env.CHATTERBOX_API_SECRET;
 
-const config = {
-	app_name: process.env.CHATTERBOX_APP_NAME,
-};
-class PinoLogger {
-	httpLoggerInstance;
-	_config;
-
-	constructor(_config) {
-		this._config = _config;
-		const pinoLogger = pino(this._getPinoOptions());
-		this.httpLoggerInstance = pinoHttp(this._getPinoHttpOptions(pinoLogger));
-	}
-
-	log(message) {
-		// console.log('🌶️', message);
-		// console.log('🎁', green(message));
-		this.trace({ message: green(message), context: "log" });
-	}
-	info(data, key) {
-		this.httpLoggerInstance.logger.info({ data }, key);
-	}
-	warn(data, key) {
-		this.httpLoggerInstance.logger.warn({ data }, key);
-	}
-	trace(data, key) {
-		// console.log('🍅--> ', obj, key, '**', context);
-		this.httpLoggerInstance.logger.trace({ data }, key);
-	}
-	fatal(error, message, context) {
-		this.httpLoggerInstance.logger.fatal(
-			{
-				context: [context, this._config.appName].find(Boolean),
-				type: error.name,
-				formatedTimestamp: `${this._getDateFormat()}`,
-				application: this._config.appName,
-				stack: error.stack,
-			},
-			message
-		);
-	}
-	error(context, key) {
-		this.httpLoggerInstance.logger.error({ context }, key);
-	}
-
-	_getDateFormat(date = new Date(), format = "dd-MM-yyyy HH:mm:ss") {
-		return DateTime.fromJSDate(date).setZone("system").toFormat(format);
-	}
-
-	_getPinoOptions() {
-		const transportConfig = this._getLogDestination();
-
-		return {
-			name: this._config.appName,
-			level: this._config.level,
-			base: undefined,
-			messageKey: this._config.messageKey,
-			errorKey: "error",
-			transport: transportConfig,
-		};
-	}
-
-	_getPinoConfig() {
-		return {
-			colorize: isColorSupported,
-			levelFirst: true,
-			ignore: "pid,hostname",
-			quietReqLogger: true,
-			messageFormat: (log, messageKey) => {
-				const message = log[String(messageKey)];
-				if (this._config.appName) {
-					return `[${this._config.appName}] ${message}`;
-				}
-
-				return message;
-			},
-			customPrettifiers: {
-				time: () => {
-					return `[${this._getDateFormat()}]`;
-				},
-			},
-		};
-	}
-
-	_getLogDestination() {
-		const targets = [
-			{
-				target: "./chatterboxTransport.mjs",
-				options: {
-					appName: this._config.appName,
-					apiSecret: process.env.CHATTERBOX_API_SECRET,
-				},
-			},
-		];
-
-		if (this._config.enableConsoleLogs) {
-			targets.push({
-				target: "pino-pretty",
-				options: {
-					colorize: true,
-					colorizeObjects: true,
-					messageKey: this._config.messageKey,
-					ignore: "pid,hostname,name",
-					singleLine: process.env.NODE_ENV === "development",
-					translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
-					customColors: {
-						info: "green",
-						warn: "yellow",
-						trace: "gray",
-						fatal: "red",
-					},
-				},
-			});
-		}
-
-		return {
-			targets: targets,
-		};
-	}
-
-	_getPinoHttpOptions(logger) {
-		return {
-			logger,
-			quietReqLogger: true,
-			genReqId: function () {
-				return randomUUID();
-			},
-			customAttributeKeys: {
-				req: "request",
-				res: "response",
-				err: "error",
-				responseTime: "timeTaken",
-				reqId: "traceId",
-			},
-			customReceivedMessage: (req) => {
-				return `REQUEST-INITIATED-${req.id}`;
-			},
-			customSuccessMessage: (req) => {
-				return `REQUEST-COMPLETE-${req.id}`;
-			},
-			customErrorMessage: (req) => {
-				return `REQUEST-FAILED-${req.id}`;
-			},
-			customReceivedObject: (req) => {
-				return {
-					request: {
-						id: req.id,
-						method: req.method,
-						url: req.url,
-						query: req.query,
-						params: req.params,
-						body: req.body,
-					},
-				};
-			},
-			serializers: {
-				err: () => false,
-				req: (req) => {
-					return process.env.NODE_ENV === "development"
-						? `${req.method} ${req.url}`
-						: req;
-				},
-				res: (res) =>
-					process.env.NODE_ENV === "development"
-						? `${res.statusCode} ${res.headers["content-type"]}`
-						: res,
-			},
-			customLogLevel: (req, res) => {
-				if (res.statusCode >= 400) {
-					return "error";
-				}
-
-				if (res.statusCode >= 300 && res.statusCode < 400) {
-					return "silent";
-				}
-
-				return "info";
-			},
-			redact: {
-				censor: "********",
-				paths: [
-					"request.body.password",
-					"response.headers",
-					"request.headers",
-					"request.remoteAddress",
-					"request.remotePort",
-				],
-			},
-		};
-	}
+if (!appName || !apiSecret) {
+	console.error(
+		"[example] Missing CHATTERBOX_APP_NAME / CHATTERBOX_API_SECRET.\n" +
+			"          Copy .env.example to .env and fill them in first."
+	);
+	process.exit(1);
 }
 
-const logger = new PinoLogger({
-	appName: config.app_name,
-	level: "debug",
-	messageKey: "key",
-	enableConsoleLogs: true,
+// One SDK instance per application. It authenticates every request with your
+// API secret and transparently queues + retries logs if the server is down.
+const chatterbox = new ChatterboxSDK({ appName, apiSecret });
+
+/**
+ * Build a log entry matching the Chatterbox log schema.
+ * Required: level, name, key, time, appName. Everything else is optional.
+ * `data` is any JSON payload — the server encrypts it at rest.
+ */
+const buildLog = (level, key, data) => ({
+	level, // "info" | "warn" | "error" | "debug" | "trace" | "fatal"
+	name: appName, // logical source name
+	key, // short event key, e.g. "USER_SIGNUP"
+	time: Date.now(),
+	data,
+	appName,
 });
 
-logger.info("info", "example-test");
-logger.info({ test: "info" }, "exampleTest");
-console.log("Sending a test log message...");
-logger.info(
-	{ details: "This log is sent via the transport worker." },
-	"EXAMPLE_LOG"
-);
+async function main() {
+	console.log(`[example] Sending logs to ${process.env.CHATTERBOX_API_URL} …`);
 
-setTimeout(() => {
-	logger.info("info", "example-test");
-	console.log("\n .Example finished.");
-}, 5000);
+	// 1) Send a single log.
+	const okSingle = await chatterbox.sendLog(
+		buildLog("info", "USER_SIGNUP", { userId: 42, plan: "pro" })
+	);
+	console.log(`[example] single log sent: ${okSingle}`);
+
+	// 2) Send several logs in one bulk request.
+	const okBulk = await chatterbox.sendLogs([
+		buildLog("warn", "RATE_LIMIT_NEAR", { ip: "203.0.113.5", remaining: 3 }),
+		buildLog("error", "PAYMENT_FAILED", {
+			orderId: "ord_123",
+			reason: "card_declined",
+		}),
+	]);
+	console.log(`[example] bulk logs sent: ${okBulk}`);
+
+	// 3) Flush any queued (failed) logs and stop the retry timer before exiting.
+	//    If the server was unreachable above, the logs are persisted to the local
+	//    queue file and retried — nothing is lost.
+	await chatterbox.close();
+	console.log("[example] done.");
+}
+
+main().catch((err) => {
+	console.error("[example] failed:", err);
+	process.exit(1);
+});
