@@ -260,11 +260,75 @@ const renderDrawer = (log: any, decrypted: any): string => {
 		  )}</pre></div>`
 		: "";
 
+	// Correlated events are the fastest way to debug, so surface the trace jump
+	// prominently rather than burying it in the fields list.
+	const traceHtml = log.traceId
+		? `<div class="cb-dsec"><button type="button" class="cb-btn cb-btn--sm cb-btn--block"
+				hx-get="/view/trace/${encodeURIComponent(String(log.traceId))}"
+				hx-target="#cb-drawer" hx-swap="innerHTML">View full trace →</button></div>`
+		: "";
+
 	return `<div class="cb-dh"><span class="lvl lvl--${lc}"><span class="lvl-dot"></span>${esc(
 		String(log.level).toUpperCase()
 	)}</span><div class="kk">${esc(log.key)}</div><div class="tt">${esc(whenStr)}</div></div>
 		<div class="cb-dsec"><div class="cb-dlbl">Overview</div><div class="cb-fields">${fieldsHtml}</div></div>
-		${reqHtml}${dataHtml}${ctxHtml}`;
+		${traceHtml}${reqHtml}${dataHtml}${ctxHtml}`;
+};
+
+/**
+ * Renders every log sharing a traceId as a request timeline: offsets from the
+ * first event, severity, key, and any request line. Each entry links back to
+ * its own detail view.
+ */
+const renderTrace = (traceId: string, logs: any[]): string => {
+	if (!logs.length) {
+		return `<div class="cb-drawer-empty">No events found for this trace.</div>`;
+	}
+
+	const timeOf = (l: any) => new Date(l.time || l.createdAt).getTime();
+	const t0 = Math.min(...logs.map(timeOf));
+	const span = Math.max(...logs.map(timeOf)) - t0;
+	const worst = ["fatal", "error", "warn"].find((lv) =>
+		logs.some((l) => levelClass(l.level) === lv)
+	);
+
+	const items = logs
+		.map((l) => {
+			const lc = levelClass(l.level);
+			const offset = timeOf(l) - t0;
+			const req = tryParseObj(l.request);
+			const msg = req && req.method && req.url ? `${req.method} ${req.url}` : "";
+			// Position each event along the trace's own duration.
+			const pct = span > 0 ? Math.round((offset / span) * 100) : 0;
+			return `<button type="button" class="cb-trace-item cb-trace-item--${lc}"
+					hx-get="/view/get-log-data/${encodeURIComponent(String(l._id ?? l.id))}"
+					hx-target="#cb-drawer" hx-swap="innerHTML">
+				<span class="cb-trace-top">
+					<span class="cb-trace-off">+${offset}ms</span>
+					<span class="lvl lvl--${lc}"><span class="lvl-dot"></span>${esc(
+				String(l.level).toUpperCase()
+			)}</span>
+					${
+						l.timeTaken != null && l.timeTaken !== ""
+							? `<span class="cb-tag">${esc(fmtDuration(l.timeTaken))}</span>`
+							: ""
+					}
+				</span>
+				<span class="cb-trace-key">${esc(l.key)}</span>
+				${msg ? `<span class="cb-trace-msg">${esc(msg)}</span>` : ""}
+				<span class="cb-trace-rail"><i style="left:${pct}%"></i></span>
+			</button>`;
+		})
+		.join("");
+
+	return `<div class="cb-dh">
+			<div class="cb-dlbl">Trace</div>
+			<div class="kk">${esc(traceId)}</div>
+			<div class="tt">${logs.length} event${logs.length === 1 ? "" : "s"} · ${span}ms${
+		worst ? ` · worst: ${esc(worst.toUpperCase())}` : ""
+	}</div>
+		</div>
+		<div class="cb-trace">${items}</div>`;
 };
 
 /**
@@ -737,6 +801,35 @@ router.get("/view/stream", authMiddleware, async (req: Request, res: Response) =
 		return res.status(500).send(renderError(message));
 	}
 });
+
+/**
+ * @route GET /view/trace/:traceId
+ * @description Returns every log correlated by traceId as a request timeline.
+ * Scoped to the session's appName so traces can't be read across tenants.
+ */
+router.get(
+	"/view/trace/:traceId",
+	authMiddleware,
+	async (req: Request, res: Response) => {
+		try {
+			const appName = req.session.appName as string;
+			const traceId = req.params.traceId;
+
+			const logs = await services.logs.find(
+				{ appName, traceId },
+				{ orderBy: { time: "asc" }, limit: 200 }
+			);
+
+			return res.send(renderTrace(traceId, logs));
+		} catch (error: any) {
+			const message =
+				error instanceof ZodError
+					? error.errors[0].message
+					: error?.message || "Could not load that trace.";
+			return res.status(500).send(renderError(message));
+		}
+	}
+);
 
 /**
  * @route GET /view/get-log-data/:id
