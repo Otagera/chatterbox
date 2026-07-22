@@ -1,17 +1,13 @@
-doctype html
-html(lang='en')
-  head
-    title Chatterbox Dashboard - #{appName}
-    
-    //- script(src="https://cdn.tailwindcss.com")
-    link(href="/styles/style.css" rel="stylesheet" type='text/css')
-    script(src='https://unpkg.com/htmx.org@1.5.0')
-    //- Removed inline style for body padding
-  body(class="bg-gray-100 min-h-screen flex items-center justify-center p-4")
-    .container(class="max-w-md w-full bg-white shadow-xl rounded-lg p-8")
-        h1(class="text-3xl font-bold text-center text-gray-800 mb-8") Chatterbox Login
-        form(hx-post="/view/login" hx-swap="outerHTML" class="space-y-6") 
-          input(type="email" placeholder="Email" name="email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out" required)
-          button(type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-150 ease-in-out") Login
-    div(id="toast-container" class="fixed top-5 right-5 z-50 space-y-2")
-    script(src="/js/htmx-errors.js")
+extends layout
+
+block content
+  main.cb-authwrap
+    .cb-authcard.cb-card
+      .cb-brand(style="font-size:20px; justify-content:center; margin-bottom:6px")
+        span.cb-logo ◆
+        span Chatterbox
+      p.cb-sub(style="text-align:center; margin:0 0 24px; font-size:14px") Sign in to view your application logs.
+      form(hx-post="/view/login" hx-swap="outerHTML")
+        label.cb-label(for="email") Email
+        input.cb-input(type="email" placeholder="you@example.com" name="email" id="email" required autocomplete="email")
+        button.cb-btn.cb-btn--primary.cb-btn--block(type="submit" style="margin-top:16px") Continue

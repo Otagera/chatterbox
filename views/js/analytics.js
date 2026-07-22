@@ -1,3 +1,14 @@
+// Make Chart.js legible in both light and dark themes by reading the design
+// tokens rather than hard-coding colors.
+if (window.Chart) {
+	const cs = getComputedStyle(document.documentElement);
+	const muted = cs.getPropertyValue("--cb-muted").trim() || "#5f6f7c";
+	const line = cs.getPropertyValue("--cb-line").trim() || "#e4eaec";
+	Chart.defaults.color = muted;
+	Chart.defaults.borderColor = line;
+	Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+}
+
 const logVolumeChart = document.getElementById("logVolumeChart");
 const logLevelDistributionChart = document.getElementById(
 	"logLevelDistributionChart"
@@ -34,7 +45,6 @@ if (topKeysChart) {
 					title: {
 						display: true,
 						text: "Occurrences",
-						color: "#333",
 						font: {
 							size: 14,
 							weight: "bold",

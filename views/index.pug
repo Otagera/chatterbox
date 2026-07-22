@@ -1,77 +1,115 @@
-doctype html
-html(lang='en')
-  head
-    title Chatterbox Dashboard - #{appName}
-    //- Removed Bootstrap CSS
-    //- script(src="https://cdn.tailwindcss.com")
-    link(href="/styles/style.css" rel="stylesheet" type='text/css')
-    script(src='https://unpkg.com/htmx.org@1.5.0')
-    style.
-      tr.htmx-swapping td {opacity: 0;transition: opacity 0.5s ease-out;}
-      //- div#copyIconContainer svg{width: 20px; height: 20px} // Can be replaced with Tailwind w-5 h-5 on the SVG itself if accessible
-  body(class="bg-gray-100 font-sans leading-normal tracking-normal")
-    .container(class="mx-auto p-1 md:p-4")
-        h1(class="text-3xl md:text-4xl font-bold text-gray-800 mb-2") Chatterbox Dashboard
-        h2(class="text-xl md:text-2xl text-gray-600 mb-6") Application: #{appName}
+extends layout
 
-        .flex.flex-col(class="sm:flex-row sm:justify-end sm:items-center mb-6 space-y-2 sm:space-y-0 sm:space-x-3")
-          a(href="/analytics" class="inline-block bg-blue-500 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded shadow hover:shadow-md transition duration-150 ease-in-out no-underline text-center") Analytics
-          a(href="/view/authorize" hx-get=`/view/authorize` hx-target="this" hx-swap="outerHTML" class="inline-block bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded shadow hover:shadow-md transition duration-150 ease-in-out no-underline text-center") New SecKey
-          button(hx-post=`/view/logout` hx-boost="true" class="bg-red-500 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded shadow hover:shadow-md transition duration-150 ease-in-out") Logout
+block content
+  .cb-app
+    //- top bar
+    .cb-topbar
+      .cb-brand(style="font-size:16px")
+        span.cb-logo ◆
+        span Chatterbox
+      a.cb-appsel(href="/")= appName
+        span.car ▾
+      .cb-spacer
+      .cb-seg
+        each r in ranges
+          a(href=`/?range=${r}` class=(range === r ? "on" : ""))= r
+      button.cb-live#cb-live(type="button" data-range=range)
+        span.pulse
+        span Live
+      a.cb-btn.cb-btn--ghost(href="/analytics") Analytics
+      a.cb-btn.cb-btn--ghost(href="/view/authorize" hx-get="/view/authorize" hx-target="this" hx-swap="outerHTML") New key
+      button.cb-btn.cb-btn--danger(hx-post="/view/logout") Logout
 
-        hr(class="border-t border-gray-300 my-6")
-        
-        form(hx-post="/view/search" hx-swap="innerHTML" hx-target="#new-log" class="bg-white shadow-md rounded-lg p-6 mb-8 space-y-4")
-          input(type="text" placeholder="Level" name="level" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" list="levelDatalistOptions")
-          datalist(id="levelDatalistOptions")
-            option(value="info")
-            option(value="error")
-            option(value="warn")
-            option(value="trace")
-            option(value="fatal")
-            option(value="debug")
-          input(type="text" placeholder="Key" name="key" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500")
-          div
-            label(for="startDate" class="block text-sm font-medium text-gray-700 mb-1") Start Date:
-            input(type="datetime-local" name="startDate" id="startDate" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500")
-          div
-            label(for="endDate" class="block text-sm font-medium text-gray-700 mb-1") Finish Date:
-            input(type="datetime-local" name="endDate" id="endDate" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500")
-          button(type="submit" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:shadow-outline transition duration-150 ease-in-out") Search Logs
-        
-        div(class="overflow-x-auto bg-white shadow-lg rounded-lg")
-          table(hx-indicator=".htmx-indicator" class="min-w-full divide-y divide-gray-200")
-            //- colgroup can be kept if specific widths are still desired, but Tailwind's table layout is often fluid
-            //- col(span="1" style="width:10%")
-            //- col(span="1" style="width:28%")
-            //- col(span="1" style="width:52%")
-            //- col(span="1" style="width:10%")
-            thead(class="bg-gray-50")
-              tr
-                th(scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider") ID
-                th(scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider") Key
-                th(scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider") Data / Timestamp
-                th(scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider") Level
-            tbody(id="new-log" class="bg-white divide-y divide-gray-200" hx-target="closest tr" hx-swap="outerHTML swap:0.5s")
-              each log, index in logs
-                tr
-                  td(scope="row" class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900") #{log.id}
-                  td(class="px-6 py-4 whitespace-nowrap text-sm text-gray-700") #{log.key}
-                  td(hx-get=`/view/get-log-data/${log.id}` hx-target="this" role="button" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-50")
-                    small #{log.createdAt}
-                  //- td(class=`px-6 py-4 whitespace-nowrap text-sm font-semibold \
-                  //-   ${log.level === 'info' ? 'text-blue-600 bg-blue-100' : ''} \
-                  //-   ${log.level === 'error' ? 'text-red-600 bg-red-100' : ''} \
-                  //-   ${log.level === 'warn' ? 'text-yellow-600 bg-yellow-100' : ''} \
-                  //-   ${log.level === 'trace' ? 'text-gray-600 bg-gray-100' : ''} \
-                  //-   ${log.level === 'fatal' ? 'text-pink-700 bg-pink-100 font-bold' : ''} \
-                  //- `) #{log.level}
-                  td(class="px-6 py-4 whitespace-nowrap text-sm")
-                    span(class=`${log.levelStyle}`) #{log.level}
-              if hasNextPage
-                tr(hx-get=`/view/get-more-logs?cursor=${encodeURIComponent(nextCursor)}` hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="this")
-                  td(colspan="4" class="px-6 py-4 text-center text-gray-500 text-sm") Loading more...
-        
-    div(id="toast-container" class="fixed top-5 right-5 z-50 space-y-2")
-    script(src="/js/htmx-errors.js")
-    script.
+    //- overview
+    .cb-overview
+      .cb-tile
+        .k Events
+        .v= overview.total.toLocaleString()
+        .sub last #{range}
+      .cb-tile.err
+        .k Error rate
+        .v #{overview.errorRate.toFixed(1)}%
+        != sparkline
+      .cb-tile
+        .k Warnings
+        .v= overview.warnings.toLocaleString()
+        .sub last #{range}
+      .cb-tile.levels
+        .k Levels
+        .cb-levelbar
+          each seg in levelBar
+            i(style=`width:${seg.pct}%; background:var(--cb-${seg.level})`)
+        .cb-lgnd
+          each seg in levelBar
+            span
+              b(style=`background:var(--cb-${seg.level})`)
+              | #{seg.level.charAt(0).toUpperCase() + seg.level.slice(1)} #{seg.count.toLocaleString()}
+          if levelBar.length === 0
+            span(style="color:var(--cb-faint)") No events in this window
+
+    //- toolbar (facets + search)
+    .cb-toolbar
+      .cb-chips
+        button.cb-chip.on(type="button" data-level="all" hx-get=`/view/stream?range=${range}&level=all` hx-target="#cb-rows" hx-swap="innerHTML" onclick="cbSelChip(this)")
+          | All
+          span.ct= overview.total.toLocaleString()
+        each lv in ["info", "warn", "error", "fatal", "debug"]
+          button.cb-chip(type="button" data-level=lv hx-get=`/view/stream?range=${range}&level=${lv}` hx-target="#cb-rows" hx-swap="innerHTML" onclick="cbSelChip(this)")
+            span.sw(style=`background:var(--cb-${lv})`)
+            | #{lv.charAt(0).toUpperCase() + lv.slice(1)}
+            span.ct= (overview.counts[lv] || 0).toLocaleString()
+      .cb-searchbox
+        span.mag ⌕
+        input(type="text" name="q" placeholder="Filter by key…" hx-get=`/view/stream?range=${range}` hx-target="#cb-rows" hx-swap="innerHTML" hx-trigger="keyup changed delay:300ms, search" hx-include="this")
+
+    //- board: stream + drawer
+    .cb-board
+      .cb-stream
+        .cb-streamhead
+          span #{overview.total.toLocaleString()} events
+          span Newest first
+        #cb-rows
+          != streamHtml
+      aside.cb-drawer.cb-card#cb-drawer
+        .cb-drawer-empty Select a log to see its full detail — decrypted data, request, trace, and errors.
+
+block scripts
+  script.
+    var cbLevel = 'all';
+
+    function cbSelChip(el) {
+      document.querySelectorAll('.cb-chip').forEach(function (c) { c.classList.remove('on'); });
+      el.classList.add('on');
+      cbLevel = el.getAttribute('data-level') || 'all';
+    }
+
+    // Highlight the selected row when its detail loads into the drawer.
+    document.addEventListener('click', function (e) {
+      var row = e.target.closest('.cb-row');
+      if (!row) return;
+      document.querySelectorAll('.cb-row.is-sel').forEach(function (r) { r.classList.remove('is-sel'); });
+      row.classList.add('is-sel');
+    });
+
+    // Live tail: while on, re-fetch the newest page for the active filter every few seconds.
+    var live = document.getElementById('cb-live');
+    var cbRange = live ? (live.getAttribute('data-range') || '24h') : '24h';
+    var liveTimer = null;
+    function cbStreamUrl() {
+      var u = '/view/stream?range=' + encodeURIComponent(cbRange);
+      if (cbLevel && cbLevel !== 'all') u += '&level=' + encodeURIComponent(cbLevel);
+      return u;
+    }
+    if (live) {
+      live.addEventListener('click', function () {
+        live.classList.toggle('on');
+        if (live.classList.contains('on')) {
+          liveTimer = setInterval(function () {
+            if (window.htmx) window.htmx.ajax('GET', cbStreamUrl(), '#cb-rows');
+          }, 5000);
+        } else if (liveTimer) {
+          clearInterval(liveTimer);
+          liveTimer = null;
+        }
+      });
+    }

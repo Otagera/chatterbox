@@ -1,5 +1,5 @@
 module.exports = {
-	content: ["./app/views/**/*.pug", "./app/controllers/view.controller.ts"],
+	content: ["./views/**/*.pug", "./app/controllers/view.controller.ts"],
 	theme: {
 		extend: {},
 	},

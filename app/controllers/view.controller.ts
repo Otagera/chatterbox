@@ -37,63 +37,234 @@ const svgContent = fs.readFileSync(svgPath, "utf8");
 const router = Router();
 const LIMIT = 20;
 
-/**
- * Determines the CSS class for styling log levels.
- * @param {string} level - The log level string (e.g., "info", "error", "trace").
- * @returns {string} The corresponding Tailwind CSS class.
- */
-const getLevelStyle = (level: string): string => {
-	// These classes should be applied to the <td> containing the log level.
-	// They provide padding, text size, font weight, background, and text color.
-	// Adjust 'px-2 py-1 text-xs font-semibold rounded-full' part as needed for overall cell styling,
-	// the specific bg/text colors are per level.
-	const baseClasses =
-		"px-3 py-1 text-xs font-semibold rounded-full text-center"; // Added text-center
-	switch (level.toLowerCase()) {
-		case "info":
-			return `${baseClasses} bg-blue-100 text-blue-700`;
-		case "error":
-			return `${baseClasses} bg-red-100 text-red-700`;
-		case "warn": // Assuming 'warn' level might exist, mapped from 'trace' or new
-			return `${baseClasses} bg-yellow-100 text-yellow-700`;
-		case "trace":
-			return `${baseClasses} bg-indigo-100 text-indigo-700`; // Changed from yellow to indigo for variety
-		case "fatal":
-			return `${baseClasses} bg-pink-100 text-pink-700 font-bold`;
-		case "debug":
-			return `${baseClasses} bg-gray-100 text-gray-700`;
-		default:
-			return `${baseClasses} bg-sky-100 text-sky-700`; // A generic fallback
-	}
-};
-
 // Helper for consistent error message styling
 const renderError = (message: string): string => {
 	logger.error(message, "UI-RENDER-ERROR");
-	return `<div class="my-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md shadow-sm">
-            <p class="font-medium">Error:</p>
-            <p>${esc(message)}</p>
-          </div>`;
+	return `<div class="cb-error-box">${esc(message)}</div>`;
 };
 
-const getRecentLogs = async (appName: string, limit = 100) => {
-	const logs = await services.logs.findByCursor(
-		{ appName },
-		{
-			first: limit,
-			orderBy: { createdAt: "desc" },
-		}
-	);
+/* ============================================================
+   Dashboard data + rendering helpers
+   ============================================================ */
 
-	const items = logs.items.map((log) => {
-		let levelStyle = getLevelStyle(log.level);
-		return { ...log, id: log._id, levelStyle };
+// Relative time windows for the range selector, in minutes.
+const RANGES: Record<string, number> = { "15m": 15, "1h": 60, "24h": 1440, "7d": 10080 };
+const normalizeRange = (r?: unknown) =>
+	typeof r === "string" && RANGES[r] ? r : "24h";
+const sinceFor = (range: string) => new Date(Date.now() - RANGES[range] * 60_000);
+
+const LEVEL_KEYS = ["info", "warn", "error", "fatal", "debug", "trace"];
+const levelClass = (level: string) => {
+	const l = String(level || "").toLowerCase();
+	return ["info", "warn", "error", "fatal", "debug"].includes(l) ? l : "debug";
+};
+
+const tryParseObj = (s?: unknown): any => {
+	if (!s || typeof s !== "string") return null;
+	try {
+		return JSON.parse(s);
+	} catch {
+		return null;
+	}
+};
+
+const fmtDuration = (t: unknown): string => {
+	if (t == null || t === "") return "";
+	if (typeof t === "number") return `${t}ms`;
+	return String(t);
+};
+
+const relTime = (d: Date | string): string => {
+	const secs = Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 1000));
+	if (secs < 60) return `${secs}s ago`;
+	const mins = Math.floor(secs / 60);
+	if (mins < 60) return `${mins}m ago`;
+	const hrs = Math.floor(mins / 60);
+	if (hrs < 24) return `${hrs}h ago`;
+	return `${Math.floor(hrs / 24)}d ago`;
+};
+
+// Where-clause shared by the initial page load and the stream endpoint.
+const buildLogFilter = (
+	appName: string,
+	since: Date,
+	level?: string,
+	q?: string
+) => {
+	const filter: Record<string, any> = { appName, createdAt: { $gte: since } };
+	if (level && level !== "all" && LEVEL_KEYS.includes(level)) filter.level = level;
+	if (q) filter.key = { $re: q };
+	return filter;
+};
+
+const getLevelCounts = async (appName: string, since: Date) => {
+	const rows: { _id: string; n: number }[] = await services.orm.em.aggregate(Log, [
+		{ $match: { appName, createdAt: { $gte: since } } },
+		{ $group: { _id: "$level", n: { $sum: 1 } } },
+	]);
+	const counts: Record<string, number> = {};
+	let total = 0;
+	rows.forEach((r) => {
+		counts[r._id] = r.n;
+		total += r.n;
 	});
-	return {
-		items,
-		nextCursor: logs.endCursor,
-		hasNextPage: logs.hasNextPage,
-	};
+	return { counts, total };
+};
+
+// Compact inline sparkline (error rate over the last few days) as an SVG string.
+const sparklineSVG = (values: number[]): string => {
+	const w = 132;
+	const h = 30;
+	const n = values.length;
+	if (n < 2) return "";
+	const max = Math.max(...values, 1);
+	const pts = values.map((v, i): [number, number] => [
+		(i / (n - 1)) * (w - 2) + 1,
+		h - 4 - (v / max) * (h - 8),
+	]);
+	const line = pts
+		.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`)
+		.join(" ");
+	const area = `${line} L${w - 1} ${h} L1 ${h} Z`;
+	const [ex, ey] = pts[pts.length - 1];
+	return `<svg class="cb-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" aria-hidden="true">
+		<path d="${area}" fill="color-mix(in oklab, var(--cb-error) 14%, transparent)"/>
+		<path d="${line}" stroke="var(--cb-error)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+		<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.6" fill="var(--cb-error)"/>
+	</svg>`;
+};
+
+const getOverview = async (appName: string, since: Date) => {
+	const { counts, total } = await getLevelCounts(appName, since);
+	const errors = (counts.error || 0) + (counts.fatal || 0);
+	const errorRate = total ? (errors / total) * 100 : 0;
+	let sparkData: number[] = [];
+	try {
+		const er = await aggregateErrorRate(appName, 7);
+		sparkData = (er.datasets?.[0]?.data as number[]) || [];
+	} catch {
+		/* sparkline is best-effort */
+	}
+	return { total, counts, errors, warnings: counts.warn || 0, errorRate, sparkData };
+};
+
+// Ordered segments for the level-distribution bar + legend.
+const buildLevelBar = (counts: Record<string, number>, total: number) =>
+	["info", "debug", "warn", "error", "fatal", "trace"]
+		.filter((l) => counts[l])
+		.map((l) => ({ level: l, count: counts[l], pct: total ? (counts[l] / total) * 100 : 0 }));
+
+// One log row for the stream. Renders gracefully whether or not the log carries
+// request/response/trace/duration metadata.
+const renderLogRow = (log: any): string => {
+	const lc = levelClass(log.level);
+	const id = String(log._id ?? log.id ?? "");
+	const when = log.time || log.createdAt;
+	const req = tryParseObj(log.request);
+	const res = tryParseObj(log.response);
+	const msg = req && req.method && req.url ? `${req.method} ${req.url}` : "";
+	const status = res ? res.statusCode ?? res.status : undefined;
+	const tags = [
+		status != null ? `<span class="cb-tag">${esc(status)}</span>` : "",
+		log.timeTaken != null && log.timeTaken !== ""
+			? `<span class="cb-tag">${esc(fmtDuration(log.timeTaken))}</span>`
+			: "",
+		log.traceId ? `<span class="cb-tag">${esc(String(log.traceId).slice(0, 8))}</span>` : "",
+	].join("");
+	return `<div class="cb-row cb-row--${lc}" role="button" tabindex="0" hx-get="/view/get-log-data/${encodeURIComponent(
+		id
+	)}" hx-target="#cb-drawer" hx-swap="innerHTML">
+		<span class="t" title="${esc(when || "")}">${esc(relTime(when))}</span>
+		<span class="cb-lvlcell"><span class="lvl lvl--${lc}"><span class="lvl-dot"></span>${esc(
+		String(log.level).toUpperCase()
+	)}</span></span>
+		<span class="kk">${esc(log.key)}</span>
+		<span class="m">${esc(msg)}</span>
+		<span class="meta">${tags}</span>
+	</div>`;
+};
+
+// The infinite-scroll sentinel carries the active filters so the next page keeps them.
+const streamSentinel = (p: { range: string; level: string; q: string; cursor: string }) => {
+	const qs = new URLSearchParams();
+	qs.set("range", p.range);
+	if (p.level && p.level !== "all") qs.set("level", p.level);
+	if (p.q) qs.set("q", p.q);
+	qs.set("cursor", p.cursor);
+	return `<div class="cb-streamfoot" hx-get="/view/stream?${qs.toString()}" hx-trigger="revealed" hx-swap="outerHTML" hx-target="this">Loading more…</div>`;
+};
+
+const renderStream = (
+	items: any[],
+	opts: {
+		range: string;
+		level: string;
+		q: string;
+		hasNextPage: boolean;
+		endCursor: string | null;
+	}
+): string => {
+	if (!items.length) {
+		return `<div class="cb-streamfoot">No events match these filters in this window.</div>`;
+	}
+	let html = items.map(renderLogRow).join("");
+	html +=
+		opts.hasNextPage && opts.endCursor
+			? streamSentinel({ range: opts.range, level: opts.level, q: opts.q, cursor: opts.endCursor })
+			: `<div class="cb-streamfoot">— end of range —</div>`;
+	return html;
+};
+
+// Full detail for the side drawer.
+const renderDrawer = (log: any, decrypted: any): string => {
+	const lc = levelClass(log.level);
+	const when = log.time || log.createdAt;
+	const whenStr = when ? new Date(when).toLocaleString() : "N/A";
+	const req = tryParseObj(log.request);
+	const res = tryParseObj(log.response);
+
+	const fields: [string, string][] = [
+		["Level", String(log.level).toUpperCase()],
+		["Time", whenStr],
+	];
+	if (log.traceId) fields.push(["Trace", String(log.traceId)]);
+	if (log.timeTaken != null && log.timeTaken !== "")
+		fields.push(["Duration", fmtDuration(log.timeTaken)]);
+	const fieldsHtml = fields
+		.map(([k, v]) => `<span class="fk">${esc(k)}</span><span class="fv">${esc(v)}</span>`)
+		.join("");
+
+	const reqHtml =
+		req && req.method
+			? `<div class="cb-dsec"><div class="cb-dlbl">Request</div><div class="cb-code">${esc(
+					req.method
+			  )} ${esc(req.url || "")}${
+					res && (res.statusCode ?? res.status) != null
+						? " → " + esc(res.statusCode ?? res.status)
+						: ""
+			  }</div></div>`
+			: "";
+
+	const dataStr =
+		typeof decrypted === "object" && decrypted !== null
+			? JSON.stringify(decrypted, null, 2)
+			: String(decrypted ?? "");
+	const dataHtml = dataStr
+		? `<div class="cb-dsec"><div class="cb-dlbl">Data (decrypted)</div><pre class="cb-code">${esc(
+				dataStr
+		  )}</pre></div>`
+		: "";
+	const ctxHtml = log.context
+		? `<div class="cb-dsec"><div class="cb-dlbl">Context</div><pre class="cb-code">${esc(
+				JSON.stringify(log.context, null, 2)
+		  )}</pre></div>`
+		: "";
+
+	return `<div class="cb-dh"><span class="lvl lvl--${lc}"><span class="lvl-dot"></span>${esc(
+		String(log.level).toUpperCase()
+	)}</span><div class="kk">${esc(log.key)}</div><div class="tt">${esc(whenStr)}</div></div>
+		<div class="cb-dsec"><div class="cb-dlbl">Overview</div><div class="cb-fields">${fieldsHtml}</div></div>
+		${reqHtml}${dataHtml}${ctxHtml}`;
 };
 
 /**
@@ -432,20 +603,34 @@ export const aggregateErrorRate = async (
 router.get("/", authMiddleware, async (req: Request, res: Response) => {
 	try {
 		const { appName, user, email } = req.session;
+		const range = normalizeRange(req.query.range);
+		const since = sinceFor(range);
 
-		const { items, nextCursor, hasNextPage } = await getRecentLogs(
-			appName as string,
-			LIMIT
+		const overview = await getOverview(appName as string, since);
+		const firstPage = await services.logs.findByCursor(
+			buildLogFilter(appName as string, since),
+			{ first: LIMIT, orderBy: { createdAt: "desc" } }
 		);
+		const streamHtml = renderStream(firstPage.items, {
+			range,
+			level: "all",
+			q: "",
+			hasNextPage: firstPage.hasNextPage,
+			endCursor: firstPage.endCursor,
+		});
 
 		return res.render("index", {
-			logs: items,
-			nextCursor: nextCursor || "",
-			hasNextPage,
+			title: `Chatterbox · ${appName}`,
 			appName,
-			user: user,
+			user,
 			email,
 			maskKey: maskKey(user as string),
+			range,
+			ranges: Object.keys(RANGES),
+			overview,
+			levelBar: buildLevelBar(overview.counts, overview.total),
+			sparkline: sparklineSVG(overview.sparkData),
+			streamHtml,
 		});
 	} catch (error: any) {
 		const message =
@@ -515,85 +700,43 @@ router.get("/login", async (req: Request, res: Response) => {
 });
 
 /**
- * @route GET /view/get-more-logs
- * @description Fetches and returns more logs for infinite scrolling (HTMX).
- * @param {Request} req - Express request object.
- * @param {Response} res - Express response object.
- * @returns {void} Sends an HTML string containing table rows of logs.
- * Sends an empty response if no more logs are available or an error message as HTML if an error occurs.
+ * @route GET /view/stream
+ * @description Returns a page of log rows (+ an infinite-scroll sentinel) for the
+ * dashboard stream. One endpoint serves the initial load, the level facets, the
+ * key search, and pagination — filters travel in the query string so nothing is
+ * held in shared server state. Scoped to the session's appName.
  */
-router.get(
-	"/view/get-more-logs",
-	authMiddleware,
-	async (req: Request, res: Response) => {
-		try {
-			// Cursor is passed per-request (not held in shared module state) so that
-			// concurrent users don't corrupt each other's pagination. Logs are scoped
-			// to the authenticated session's appName to prevent cross-tenant leakage.
-			const appName = req.session.appName as string;
-			const after = (req.query.cursor as string) || undefined;
+router.get("/view/stream", authMiddleware, async (req: Request, res: Response) => {
+	try {
+		const appName = req.session.appName as string;
+		const range = normalizeRange(req.query.range);
+		const level = typeof req.query.level === "string" ? req.query.level : "all";
+		const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+		const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+		const since = sinceFor(range);
 
-			const logsResult = await services.logs.findByCursor(
-				{ appName },
-				{
-					first: LIMIT,
-					after,
-					orderBy: { createdAt: "desc" },
-				}
-			);
+		const result = await services.logs.findByCursor(
+			buildLogFilter(appName, since, level, q),
+			{ first: LIMIT, after: cursor, orderBy: { createdAt: "desc" } }
+		);
 
-			let logsHTML = ``;
-
-			logsResult.items.forEach((log) => {
-				const formattedDate = log.createdAt;
-				const levelDisplayClasses = getLevelStyle(log.level);
-
-				const logHTML = `
-				<tr class="hover:bg-gray-50 transition-colors duration-150">
-					<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${esc(
-						log.id
-					)}</td>
-					<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${esc(
-						log.key
-					)}</td>
-					<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-100" hx-get="/view/get-log-data/${encodeURIComponent(
-						log.id
-					)}" hx-target="this" role="button">
-						<span class="text-xs">${esc(formattedDate)}</span>
-					</td>
-					<td class="px-6 py-4 whitespace-nowrap text-sm">
-							<span class="${levelDisplayClasses}">${esc(log.level)}</span>
-					</td>
-				</tr>
-			`;
-				logsHTML = logsHTML.concat(logHTML);
-			});
-
-			if (logsResult.hasNextPage) {
-				logsHTML = logsHTML.concat(
-					`<tr hx-get="/view/get-more-logs?cursor=${encodeURIComponent(
-						logsResult.endCursor || ""
-					)}" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="this">
-          <td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base">Loading more...</td>
-        </tr>
-        `
-				);
-			} else {
-				logsHTML = logsHTML.concat(
-					`<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base font-semibold">END OF LOGS</td></tr>`
-				);
-			}
-
-			return res.send(logsHTML);
-		} catch (error: any) {
-			const message =
-				error instanceof ZodError
-					? error.errors[0].message
-					: error?.message || "Something went wrong fetching more logs!!!";
-			return res.status(500).send(renderError(message));
-		}
+		return res.send(
+			renderStream(result.items, {
+				range,
+				level,
+				q,
+				hasNextPage: result.hasNextPage,
+				endCursor: result.endCursor,
+			})
+		);
+	} catch (error: any) {
+		const message =
+			error instanceof ZodError
+				? error.errors[0].message
+				: error?.message || "Something went wrong fetching logs.";
+		return res.status(500).send(renderError(message));
 	}
-);
+});
 
 /**
  * @route GET /view/get-log-data/:id
@@ -612,19 +755,8 @@ router.get(
 		try {
 			const log = await services.logs.findOneOrFail(id);
 
-			let logDataToDisplay: any = {};
-			const {
-				data: possibleEncryptedData,
-				name,
-				context,
-				traceId,
-				request,
-				response,
-				timeTaken,
-				time,
-				createdAt,
-			} = log;
-			let decryptedData = possibleEncryptedData;
+			const possibleEncryptedData = log.data;
+			let decryptedData: any = possibleEncryptedData;
 			if (typeof possibleEncryptedData === "string") {
 				try {
 					decryptedData = decryptObj(possibleEncryptedData, req.appName || "");
@@ -641,33 +773,7 @@ router.get(
 				}
 			}
 
-			logDataToDisplay = {
-				...(typeof decryptedData === "object" && decryptedData !== null
-					? decryptedData
-					: { data: decryptedData }),
-				name,
-				context,
-				traceId,
-				request,
-				response,
-				timeTaken,
-			};
-
-			const formattedTime =
-				time || (createdAt ? new Date(createdAt).toLocaleString() : "N/A");
-
-			return res.send(
-				`
-          <div class="px-6 py-4 text-sm text-gray-700 max-w-2xl mx-auto">
-            <span class="block text-xs text-gray-500 mb-2">Log Time: ${esc(
-							formattedTime
-						)}</span>
-            <pre class="block p-3 my-2 text-xs leading-relaxed text-gray-800 bg-gray-50 border border-gray-300 rounded-md whitespace-pre-wrap break-words overflow-auto shadow-sm">${esc(
-							JSON.stringify(logDataToDisplay, null, 2)
-						)}</pre>
-          </div>
-        `
-			);
+			return res.send(renderDrawer(log, decryptedData));
 		} catch (error: any) {
 			const message =
 				error instanceof ZodError
@@ -679,149 +785,6 @@ router.get(
 );
 
 /**
- * @route POST /view/search
- * @description Searches logs based on filters provided in the request body (HTMX).
- * @param {Request} req - Express request object. Expects filter criteria in `req.body` (startDate, endDate, level, key).
- * @param {Response} res - Express response object.
- * @returns {void} Sends an HTML string containing table rows of matching logs.
- * Sends an error message as HTML if an error occurs.
- */
-router.post(
-	"/view/search",
-	authMiddleware,
-	async (req: Request, res: Response) => {
-	const spec = z
-		.object({
-			startDate: z.string().datetime().optional(),
-			endDate: z.string().datetime().optional(),
-			level: z.string().optional(),
-			key: z.string().optional(),
-		})
-		.required();
-	type specType = z.infer<typeof spec>;
-	const body = validateSpec<specType>(spec, req.body);
-	// Pagination cursor is passed per-request (not global module state) so
-	// concurrent searches don't clobber each other.
-	const cursor =
-		typeof req.body.cursor === "string" ? req.body.cursor : undefined;
-	let filter: {
-		appName?: string;
-		level?: string;
-		key?: string;
-		time?: {
-			$gte?: Date;
-			$lt?: Date;
-		};
-	} = { time: {}, appName: req.session.appName };
-	if ("startDate" in body && body.startDate.length) {
-		if (filter.time) filter.time["$gte"] = new Date(body.startDate);
-	}
-	if ("endDate" in body && body.endDate.length) {
-		if (filter.time) filter.time["$lt"] = new Date(body.endDate);
-	}
-	if ("level" in body && body.level.length) {
-		filter.level = body.level;
-	}
-	if ("key" in body && body.key.length) {
-		filter.key = body.key;
-	}
-
-	if (!Object.entries(filter.time as string).length) {
-		delete filter.time;
-	}
-	try {
-		const logsResult = await services.logs.findByCursor(filter, {
-			first: LIMIT,
-			after: cursor,
-			orderBy: { createdAt: "desc" },
-		});
-
-		let logsHTML = ``;
-		if (logsResult.items.length === 0) {
-			logsHTML = `<tr><td colspan="4" class="px-6 py-10 text-center text-gray-500 text-lg font-medium">No logs found matching your criteria.</td></tr>`;
-		} else {
-			logsResult.items.forEach((log) => {
-				const formattedDate = log.createdAt;
-				const levelDisplayClasses = getLevelStyle(log.level);
-
-				const logHTML = `
-            <tr class="hover:bg-gray-50 transition-colors duration-150">
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${esc(
-								log.id
-							)}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${esc(
-								log.key
-							)}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:bg-gray-100" hx-get="/view/get-log-data/${encodeURIComponent(
-								log.id
-							)}" hx-target="this" role="button">
-                <span class="text-xs">${esc(formattedDate)}</span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm">
-                <span class="${levelDisplayClasses}">${esc(log.level)}</span>
-              </td>
-            </tr>
-          `;
-				logsHTML = logsHTML.concat(logHTML);
-			});
-
-			if (logsResult.hasNextPage) {
-				logsHTML = logsHTML.concat(
-					`<tr id="more-search-logs" class="h-7">
-						<td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base h-7">
-							<p>Loading...</p>
-							<form class="collapse h-7" hx-post="/view/search" hx-trigger="revealed" hx-swap="outerHTML swap:0.5s" hx-target="#more-search-logs">
-								<input type="hidden" name="cursor" value="${esc(logsResult.endCursor || "")}">
-								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Level" name="level" list="levelDatalistOptions" value="${esc(
-									body.level
-								)}">
-								<datalist id="levelDatalistOptions">
-									<option value="info"></option>
-									<option value="error"></option>
-									<option value="warn"></option>
-									<option value="trace"></option>
-									<option value="fatal"></option>
-									<option value="debug"></option>
-								</datalist>
-								<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" placeholder="Key" name="key" value="${esc(
-									body.key ? body.key : ""
-								)}">
-								<div>
-									<label class="block text-sm font-medium text-gray-700 mb-1" for="startDate">Start Date:</label>
-									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="startDate" id="startDate" value="${esc(
-										body.startDate ? body.startDate : ""
-									)}">
-								</div>
-								<div>
-									<label class="block text-sm font-medium text-gray-700 mb-1" for="endDate">Finish Date:</label>
-									<input class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" type="datetime-local" name="endDate" id="endDate" value="${esc(
-										body.endDate ? body.endDate : ""
-									)}">
-								</div>
-							</form>
-						</td>
-					</tr>
-					`
-				);
-			} else {
-				logsHTML = logsHTML.concat(
-					`<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500 text-base font-semibold">END OF LOGS</td></tr>`
-				);
-			}
-			// Note: Infinite scroll for search results might need its own hx-get target if different from main log list.
-		}
-		return res.send(logsHTML);
-	} catch (error: any) {
-		const message =
-			error instanceof ZodError
-				? error.errors[0].message
-				: error?.message || "Something went wrong during search!!!";
-		return res.status(500).send(renderError(message));
-	}
-	}
-);
-
-/**
  * Generates HTML for a list of applications.
  * @param {AppKey[]} apps - An array of AppKey entities.
  * @param {string} loginToken - The user's login token.
@@ -829,40 +792,69 @@ router.post(
  * @returns {string} An HTML string representing the list of applications.
  */
 const getApps = (apps: AppKey[], loginToken: string, email: string): string => {
-	let appHTML = "";
 	if (apps.length === 0) {
-		return `<li class="py-2 text-gray-500">No applications found for this user.</li>`;
+		return `<li class="cb-note" style="padding:11px 0">No applications yet — add one below.</li>`;
 	}
-	apps.forEach((app, index) => {
-		const encodedAppName = encodeURIComponent(app.appName);
-		const encodedLoginToken = encodeURIComponent(loginToken);
-		const encodedEmail = encodeURIComponent(email);
-
-		appHTML += `
-      <li class="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
+	return apps
+		.map((app, index) => {
+			const encodedAppName = encodeURIComponent(app.appName);
+			const encodedLoginToken = encodeURIComponent(loginToken);
+			const encodedEmail = encodeURIComponent(email);
+			return `
+      <li class="cb-list-item">
         <span
+          class="cb-applink"
           hx-trigger="click"
-          hx-target="#appsListContainer" 
-          hx-swap="innerHTML" 
-          hx-get="/view/apps?appName=${encodedAppName}&loginToken=${encodedLoginToken}"
-          class="text-blue-600 hover:text-blue-800 underline cursor-pointer font-medium">
-            ${esc(app.appName)}
-        </span>
-        <div id="app-delete-box-${index}" class="text-sm">
+          hx-target="#appsListContainer"
+          hx-swap="innerHTML"
+          hx-get="/view/apps?appName=${encodedAppName}&loginToken=${encodedLoginToken}">${esc(
+				app.appName
+			)}</span>
+        <div id="app-delete-box-${index}">
           <button
             type="button"
+            class="cb-btn cb-btn--danger cb-btn--sm"
             hx-trigger="click"
             hx-target="#app-delete-box-${index}"
             hx-swap="innerHTML"
-            hx-get="/view/apps/delete-confirmation?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${index}"
-            class="text-red-500 hover:text-red-700 hover:underline cursor-pointer font-medium">
-            Delete
-          </button>
+            hx-get="/view/apps/delete-confirmation?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${index}">Delete</button>
         </div>
-      </li>
-    `;
-	});
-	return appHTML;
+      </li>`;
+		})
+		.join("");
+};
+
+// The applications panel shown after login (and after create/delete).
+const appsPanel = (
+	apps: AppKey[],
+	loginToken: string,
+	email: string,
+	notice = "",
+	noticeType: "ok" | "error" = "ok"
+): string => {
+	const encodedLoginToken = encodeURIComponent(loginToken);
+	const encodedEmail = encodeURIComponent(email);
+	const errorTop = notice && noticeType === "error" ? renderError(notice) : "";
+	const okBottom =
+		notice && noticeType === "ok"
+			? `<p class="cb-ok-note" style="margin-top:12px">${esc(notice)}</p>`
+			: "";
+	return `
+    <div id="appsListContainer">
+      ${errorTop}
+      <h2 class="cb-h2">Your applications</h2>
+      <p class="cb-note" style="margin:0 0 14px">Choose an app to view its logs, or add a new one.</p>
+      <ul class="cb-list">${getApps(apps, loginToken, email)}</ul>
+      <button
+          type="button"
+          class="cb-btn cb-btn--primary cb-btn--block"
+          style="margin-top:16px"
+          hx-trigger="click"
+          hx-target="#appsListContainer"
+          hx-swap="innerHTML"
+          hx-get="/view/apps?newEmail=${encodedEmail}&loginToken=${encodedLoginToken}">Add application</button>
+      ${okBottom}
+    </div>`;
 };
 
 /**
@@ -880,30 +872,8 @@ router.post("/view/login", async (req: Request, res: Response) => {
 		const { email, existingApps, loginToken } = await loginService(req.body);
 		req.session.email = email;
 
-		const encodedLoginToken = encodeURIComponent(loginToken);
-		const encodedEmail = encodeURIComponent(email);
-
-		const appsHTML = `
-      <div id="appsListContainer" class="mt-6 bg-white p-6">
-        <h2 class="text-xl font-semibold text-gray-700 mb-4">Your Applications</h2>
-        <ul class="divide-y divide-gray-200">
-          ${getApps(existingApps, loginToken, email)}
-        </ul>
-        <div class="mt-6">
-          <button
-              type="button"
-              hx-trigger="click"
-              hx-target="#appsListContainer"
-              hx-swap="innerHTML"
-              hx-get="/view/apps?newEmail=${encodedEmail}&loginToken=${encodedLoginToken}"
-              class="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                Add New Application
-          </button>
-        </div>
-      </div>
-    `;
 		logger.info({ email }, "UI-LOGIN-INITIATED");
-		return res.send(appsHTML);
+		return res.send(appsPanel(existingApps, loginToken, email));
 	} catch (error: any) {
 		let errorMessage = "Login failed. Please try again.";
 		if (error instanceof ZodError) {
@@ -913,14 +883,12 @@ router.post("/view/login", async (req: Request, res: Response) => {
 		}
 
 		return res.send(`
-      <div class="max-w-md w-full bg-white shadow-xl rounded-lg p-8 space-y-6">
-        <h1 class="text-3xl font-bold text-center text-gray-800">Chatterbox Login</h1>
-        <form hx-post="/view/login" hx-swap="outerHTML" class="space-y-6">
-          <input type="email" placeholder="Email" name="email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required />
-          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:shadow-outline">Login</button>
-        </form>
+      <form hx-post="/view/login" hx-swap="outerHTML">
+        <label class="cb-label" for="email">Email</label>
+        <input class="cb-input" type="email" placeholder="you@example.com" name="email" id="email" required autocomplete="email" />
+        <button class="cb-btn cb-btn--primary cb-btn--block" type="submit" style="margin-top:16px">Continue</button>
         ${renderError(errorMessage)}
-      </div>
+      </form>
     `);
 	}
 });
@@ -995,28 +963,55 @@ const getViewApps = async (
 	const displayEmail = userEmail || user.email;
 	const encodedAppName = encodeURIComponent(appName);
 
-	const otpFormHTML = `
-    <div id="otpFormContainer" class="bg-white p-6 w-full max-w-md mx-auto">
-      <h2 class="text-xl font-semibold text-gray-700 mb-1">Verify Access for <span class="font-bold">${esc(
-				appName
-			)}</span></h2>
-      <p class="text-sm text-gray-600 mb-4">An OTP has been sent to: ${esc(
+	return otpForm(appName, displayEmail);
+};
+
+// Shared OTP form markup (used for the initial prompt and the retry-on-error case).
+const otpForm = (appName: string, displayEmail: string, errorMessage = ""): string => {
+	const encodedAppName = encodeURIComponent(appName);
+	return `
+    <div id="otpFormContainer">
+      <h2 class="cb-h2">Verify access for ${esc(appName)}</h2>
+      <p class="cb-note" style="margin:0 0 16px">A one-time code was sent to ${esc(
 				displayEmail
-			)}</p>
+			)}.</p>
       <form hx-post="/view/otp?appName=${encodedAppName}" hx-swap="innerHTML" hx-target="#otpFormContainer">
-        <input type="email" name="email" class="hidden" value="${esc(
-					displayEmail
-				)}" />
-        <div class="mb-4">
-          <label for="otp" class="block text-sm font-medium text-gray-700 mb-1">Enter OTP</label>
-          <input type="number" placeholder="6-digit OTP" name="otp" id="otp" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-        </div>
-        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Verify & Login</button>
+        <input type="email" name="email" value="${esc(displayEmail)}" style="display:none" />
+        <label class="cb-label" for="otp">Enter code</label>
+        <input class="cb-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" name="otp" id="otp" required />
+        <button class="cb-btn cb-btn--primary cb-btn--block" type="submit" style="margin-top:16px">Verify &amp; continue</button>
       </form>
-      <div id="otpErrorMsg" class="mt-3"></div>
-    </div>
-  `;
-	return otpFormHTML;
+      <div id="otpErrorMsg" style="margin-top:12px">${
+				errorMessage ? renderError(errorMessage) : ""
+			}</div>
+    </div>`;
+};
+
+// Shared "create application" form markup.
+const newAppForm = (
+	email: string,
+	loginToken: string,
+	appNameValue = "",
+	errorMessage = ""
+): string => {
+	const encodedLoginToken = encodeURIComponent(loginToken);
+	return `
+    <div id="newAppFormContainer">
+      <h2 class="cb-h2">Create application</h2>
+      <p class="cb-note" style="margin:0 0 16px">For ${esc(email)}</p>
+      <form hx-post="/view/apps?loginToken=${encodedLoginToken}" hx-swap="innerHTML" hx-target="#newAppFormContainer">
+        <input type="email" name="email" value="${esc(email)}" style="display:none" />
+        <label class="cb-label" for="appNameInput">Application name</label>
+        <input class="cb-input" type="text" placeholder="e.g. web-app" name="appName" id="appNameInput" value="${esc(
+					appNameValue
+				)}" required />
+        <input type="number" name="expires" value="31536000" style="display:none" />
+        <button class="cb-btn cb-btn--primary cb-btn--block" type="submit" style="margin-top:16px">Create application</button>
+      </form>
+      <div id="newAppErrorMsg" style="margin-top:12px">${
+				errorMessage ? renderError(errorMessage) : ""
+			}</div>
+    </div>`;
 };
 
 /**
@@ -1059,26 +1054,7 @@ router.get("/view/apps", async (req: Request, res: Response) => {
 					"User not found for creating a new app. Please log in again."
 				);
 
-			const encodedLoginToken = encodeURIComponent(loginToken as string);
-
-			const newAppFormHTML = `
-        <div id="newAppFormContainer" class="mt-6 bg-white shadow-md rounded-lg p-6 w-full max-w-md mx-auto">
-          <h2 class="text-xl font-semibold text-gray-700 mb-4">Create New Application</h2>
-          <p class="text-sm text-gray-600 mb-4">For user: ${esc(user.email)}</p>
-          <form hx-post="/view/apps?loginToken=${encodedLoginToken}" hx-swap="innerHTML" hx-target="#newAppFormContainer">
-            <input type="email" name="email" class="hidden" value="${esc(
-							user.email
-						)}" />
-            <div class="mb-4">
-              <label for="appNameInput" class="block text-sm font-medium text-gray-700 mb-1">Application Name</label>
-              <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-            </div>
-            <input type="number" name="expires" class="hidden" value="31536000" /> <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
-          </form>
-          <div id="newAppErrorMsg" class="mt-3"></div>
-        </div>
-      `;
-			return res.send(newAppFormHTML);
+			return res.send(newAppForm(user.email, loginToken as string));
 		} else {
 			throw new Error(
 				"Invalid parameters. Please select an app or choose to create a new one."
@@ -1139,40 +1115,9 @@ router.post("/view/apps", async (req: Request, res: Response) => {
 			error instanceof ZodError
 				? error.errors.map((e) => e.message).join(", ")
 				: error?.message || "Failed to create application.";
-		// Attempt to resend the form with the error, might need more context for hx-target
-		// For now, sending a general error or the form again if possible.
-		// This specific error should ideally be handled by HTMX to target an error message area within the form.
-		const userEmailForForm = body.email;
-		const encodedLoginToken = encodeURIComponent(loginToken as string);
-		const newAppFormWithErrorHTML = `
-        <div id="newAppFormContainer" class="mt-6 bg-white shadow-md rounded-lg p-6 w-full max-w-md mx-auto">
-          <h2 class="text-xl font-semibold text-gray-700 mb-4">Create New Application</h2>
-          ${
-						userEmailForForm
-							? `<p class="text-sm text-gray-600 mb-4">For user: ${esc(
-									userEmailForForm
-							  )}</p>`
-							: ""
-					}
-          <form hx-post="/view/apps?loginToken=${encodedLoginToken}" hx-swap="innerHTML" hx-target="#newAppFormContainer">
-            <input type="email" name="email" class="hidden" value="${esc(
-							userEmailForForm
-						)}" />
-            <div class="mb-4">
-              <label for="appNameInput" class="block text-sm font-medium text-gray-700 mb-1">Application Name</label>
-              <input type="text" placeholder="Enter App Name" name="appName" id="appNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="${esc(
-								body.appName || ""
-							)}" required />
-            </div>
-            <input type="number" name="expires" class="hidden" value="31536000" />
-            <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Create Application</button>
-          </form>
-          <div id="newAppErrorMsg" class="mt-3 text-red-500 text-sm">${esc(
-						message
-					)}</div>
-        </div>
-      `;
-		return res.send(newAppFormWithErrorHTML);
+		return res.send(
+			newAppForm(body.email, loginToken as string, body.appName || "", message)
+		);
 	}
 });
 
@@ -1197,26 +1142,22 @@ router.get(
 			const encodedEmail = encodeURIComponent(email as string);
 
 			const confirmationHTML = `
-        <div class="flex justify-end items-center space-x-3 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-          <span class="text-sm text-yellow-700">Delete ${esc(appName)}?</span>
+        <div class="cb-confirm">
+          <span class="cb-note">Delete ${esc(appName)}?</span>
           <button
             type="button"
+            class="cb-btn cb-btn--sm"
             hx-trigger="click"
             hx-target="#app-delete-box-${appIndex}"
             hx-swap="innerHTML"
-            hx-get="/view/apps/delete-cancel?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}"
-            class="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400">
-              Cancel
-          </button>
+            hx-get="/view/apps/delete-cancel?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}">Cancel</button>
           <button
             type="button"
+            class="cb-btn cb-btn--danger cb-btn--sm"
             hx-trigger="click"
-            hx-target="#appsListContainer" 
-            hx-swap="innerHTML"
-            hx-delete="/view/apps?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}"
-            class="px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-red-500">
-              Confirm Delete
-          </button>
+            hx-target="#appsListContainer"
+            hx-swap="outerHTML"
+            hx-delete="/view/apps?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}">Confirm</button>
         </div>
       `;
 			return res.send(confirmationHTML);
@@ -1251,13 +1192,11 @@ router.get("/view/apps/delete-cancel", async (req: Request, res: Response) => {
 		const cancelHTML = `
       <button
         type="button"
+        class="cb-btn cb-btn--danger cb-btn--sm"
         hx-trigger="click"
         hx-target="#app-delete-box-${appIndex}"
         hx-swap="innerHTML"
-        hx-get="/view/apps/delete-confirmation?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}"
-        class="text-red-500 hover:text-red-700 hover:underline cursor-pointer font-medium">
-        Delete
-      </button>
+        hx-get="/view/apps/delete-confirmation?appName=${encodedAppName}&loginToken=${encodedLoginToken}&email=${encodedEmail}&appIndex=${appIndex}">Delete</button>
       `;
 		return res.send(cancelHTML);
 	} catch (error: any) {
@@ -1317,40 +1256,19 @@ router.delete("/view/apps", async (req: Request, res: Response) => {
 		await services.em.removeAndFlush(appKeyEntry);
 
 		const existingApps = await services.appKeys.find({ user });
-		const encodedLoginToken = encodeURIComponent(loginToken as string);
-		const encodedUserEmail = encodeURIComponent(user.email);
-
-		const updatedAppsListHTML = `
-      <div id="appsListContainer" class="mt-6 bg-white p-6">
-        <h2 class="text-xl font-semibold text-gray-700 mb-4">Your Applications</h2>
-        <ul class="divide-y divide-gray-200">
-          ${getApps(existingApps, loginToken as string, user.email)}
-        </ul>
-        <div class="mt-6">
-          <button
-              type="button"
-              hx-trigger="click"
-              hx-target="#appsListContainer"
-              hx-swap="innerHTML"
-              hx-get="/view/apps?newEmail=${encodedUserEmail}&loginToken=${encodedLoginToken}"
-              class="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                Add New Application
-          </button>
-        </div>
-        <p class="mt-4 text-sm text-green-600">Application '${esc(
-					appName
-				)}' deleted successfully.</p>
-      </div>
-    `;
-		return res.send(updatedAppsListHTML);
+		return res.send(
+			appsPanel(
+				existingApps,
+				loginToken as string,
+				user.email,
+				`Application '${appName}' deleted.`
+			)
+		);
 	} catch (error: any) {
 		const message =
 			error instanceof ZodError
 				? error.errors[0].message
 				: error?.message || "Failed to delete application.";
-		// If deletion fails, ideally, we'd send back the original list with an error message.
-		// For simplicity, sending a general error that HTMX can place.
-		// Or, you could re-fetch the original list and add an error message above/below it.
 		const existingApps =
 			req.session.email && loginToken
 				? await services.appKeys.find({
@@ -1360,33 +1278,11 @@ router.delete("/view/apps", async (req: Request, res: Response) => {
 						},
 				  })
 				: [];
-		const appsListWithError = `
-    <div id="appsListContainer" class="mt-6 bg-white p-6">
-       ${renderError(
-					message
-				)} <h2 class="text-xl font-semibold text-gray-700 mb-4">Your Applications</h2>
-        <ul class="divide-y divide-gray-200">
-          ${getApps(
-						existingApps,
-						loginToken as string,
-						req.session.email || ""
-					)}
-        </ul>
-        <div class="mt-6">
-          <button
-              type="button"
-              hx-trigger="click"
-              hx-target="#appsListContainer"
-              hx-swap="innerHTML"
-              hx-get="/view/apps?newEmail=${encodeURIComponent(
-								req.session.email || ""
-							)}&loginToken=${encodeURIComponent(loginToken as string)}"
-              class="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                Add New Application
-          </button>
-        </div>
-      </div>`;
-		return res.status(400).send(appsListWithError);
+		return res
+			.status(400)
+			.send(
+				appsPanel(existingApps, loginToken as string, req.session.email || "", message, "error")
+			);
 	}
 });
 
@@ -1440,30 +1336,9 @@ router.post("/view/otp", async (req: Request, res: Response) => {
 		const appNameQuery = req.query.appName as string;
 		const userEmailForForm = req.session.email || req.body.email;
 
-		const encodedAppNameQuery = encodeURIComponent(appNameQuery);
-
-		const otpFormWithErrorHTML = `
-      <div id="otpFormContainer" class="bg-white p-6 w-full max-w-md mx-auto">
-        <h2 class="text-xl font-semibold text-gray-700 mb-1">Verify Access for <span class="font-bold">${esc(
-					appNameQuery
-				)}</span></h2>
-        <p class="text-sm text-gray-600 mb-4">An OTP has been sent to: ${esc(
-					userEmailForForm
-				)}</p>
-        <form hx-post="/view/otp?appName=${encodedAppNameQuery}" hx-swap="innerHTML" hx-target="#otpFormContainer">
-          <input type="email" name="email" class="hidden" value="${esc(
-						userEmailForForm
-					)}" />
-          <div class="mb-4">
-            <label for="otp" class="block text-sm font-medium text-gray-700 mb-1">Enter OTP</label>
-            <input type="number" placeholder="6-digit OTP" name="otp" id="otp" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-          </div>
-          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Verify & Login</button>
-        </form>
-        <div id="otpErrorMsg" class="mt-3 text-red-500 text-sm p-2 bg-red-50 rounded-md border border-red-200">${errorMessage}</div>
-      </div>
-    `;
-		return res.status(401).send(otpFormWithErrorHTML);
+		return res
+			.status(401)
+			.send(otpForm(appNameQuery, userEmailForForm, errorMessage));
 	}
 });
 
@@ -1487,30 +1362,29 @@ router.get("/view/authorize", async (req: Request, res: Response) => {
 		const { apiSecret } = await apiAuthorizeService({ email, appName });
 		req.session.user = apiSecret;
 		const apiKeyDisplayHTML = `
-      <div id="apiKeyDisplaySection" class="p-4 bg-gray-50 rounded-lg shadow-sm border border-gray-200">
-        <p class="text-sm font-medium text-gray-700 mb-1">Your API Secret Key for <span class="font-semibold">${esc(
+      <div id="apiKeyDisplaySection" style="max-width:340px">
+        <p class="cb-note" style="margin:0 0 6px">API secret for <strong>${esc(
 					appName
-				)}</span>:</p>
-        <div class="flex items-center space-x-2 bg-gray-100 p-2 rounded-md">
-          <span id="apiKeyToCopy" class="font-mono text-sm text-gray-800 break-all">${esc(
-						maskKey(apiSecret)
-					)}</span>
+				)}</strong></p>
+        <div class="cb-keybox">
+          <code>${esc(maskKey(apiSecret))}</code>
           <button
             type="button"
-            title="Copy API Key"
+            title="Copy API secret"
+            class="cb-copybtn"
             data-secret="${esc(apiSecret)}"
             data-feedback-id="copyFeedback-${esc(appName)}"
-            class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onclick="(function(btn){ navigator.clipboard.writeText(btn.dataset.secret).then(function(){ var el = document.getElementById(btn.dataset.feedbackId); if(el){ el.textContent = 'Copied!'; setTimeout(function(){ el.textContent=''; }, 2000); } }).catch(function(err){ console.error('Failed to copy: ', err); }); })(this)">
-            ${svgContent.replace("<svg", '<svg class="w-5 h-5 fill-current"')}
-          </button>
+            onclick="(function(btn){ navigator.clipboard.writeText(btn.dataset.secret).then(function(){ var el = document.getElementById(btn.dataset.feedbackId); if(el){ el.textContent = 'Copied!'; setTimeout(function(){ el.textContent=''; }, 2000); } }).catch(function(err){ console.error('Failed to copy: ', err); }); })(this)">${svgContent.replace(
+						"<svg",
+						'<svg width="18" height="18"'
+					)}</button>
         </div>
         <span id="copyFeedback-${esc(
 					appName
-				)}" class="text-xs text-green-600 mt-1 h-4 block"></span>
+				)}" class="cb-ok-note" style="display:block; height:16px; margin-top:4px"></span>
       </div>
     `;
-		logger.warn({ appName, email }, "UI-APP-DELETION-SUCCESS");
+		logger.info({ appName, email }, "UI-API-KEY-REVEALED");
 		return res.send(apiKeyDisplayHTML);
 	} catch (error: any) {
 		const message =

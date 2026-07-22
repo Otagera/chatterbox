@@ -1,0 +1,14 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1")
+    title= (typeof title !== "undefined" && title) ? title : "Chatterbox"
+    link(href="/styles/style.css" rel="stylesheet" type="text/css")
+    script(src="/js/htmx.min.js")
+    block head
+  body.cb-body
+    block content
+    #toast-container.cb-toasts
+    script(src="/js/htmx-errors.js")
+    block scripts
