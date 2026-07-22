@@ -164,6 +164,15 @@ export const init = (async () => {
 	app.set("views", path.join(__dirname, "../views"));
 	app.locals.basedir = path.join(__dirname, "views");
 	app.set("view engine", "pug");
+	// Templates live in views/ alongside the static assets, so serving that
+	// directory wholesale also exposed their source (/layout.pug, /email/otp.ejs).
+	// Block template extensions before the static handler sees them.
+	app.use((req, res, next) => {
+		if (/\.(pug|ejs)$/i.test(req.path)) {
+			return res.status(404).json({ message: "No route found" });
+		}
+		return next();
+	});
 	app.use(express.static(path.join(__dirname, "../views")));
 
 	app.use("/", ViewController);

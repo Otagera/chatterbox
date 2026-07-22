@@ -4,6 +4,15 @@ html(lang="en")
     meta(charset="utf-8")
     meta(name="viewport" content="width=device-width, initial-scale=1")
     title= (typeof title !== "undefined" && title) ? title : "Chatterbox"
+    //- Favicons. The .ico is kept because browsers request /favicon.ico
+    //- regardless of these tags, and a 404 there is logged as an error.
+    link(rel="icon" href="/favicon.ico" sizes="32x32")
+    link(rel="icon" href="/favicon.svg" type="image/svg+xml")
+    link(rel="apple-touch-icon" href="/apple-touch-icon.png")
+    link(rel="manifest" href="/site.webmanifest")
+    //- Browser chrome follows the page background in each theme.
+    meta(name="theme-color" media="(prefers-color-scheme: light)" content="#f5f8f8")
+    meta(name="theme-color" media="(prefers-color-scheme: dark)" content="#0c1116")
     link(href="/styles/style.css" rel="stylesheet" type="text/css")
     script(src="/js/htmx.min.js")
     block head
