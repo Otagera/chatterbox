@@ -9,9 +9,9 @@ export interface IBaseLog {
 	time: Date;
 	data?: object | string;
 	traceId?: string;
-	request?: string;
-	response?: string;
-	timeTaken?: string;
+	request?: Record<string, any> | string;
+	response?: Record<string, any> | string;
+	timeTaken?: number | string;
 	key: string;
 	appName: string;
 }

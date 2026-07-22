@@ -65,10 +65,45 @@ const logSpec = z.object({
 			stack: z.string().optional(),
 		})
 		.optional(),
-	timeTaken: z.union([z.date(), z.number()]).optional(),
+	// Accepts a number of ms, a Date, or a string like "42ms"; normalized to a
+	// number before storage so latency can be aggregated.
+	timeTaken: z.union([z.date(), z.number(), z.string()]).optional(),
 	key: z.string(),
 	appName: z.string(),
 });
+
+/**
+ * Normalizes a log before storage so it can be aggregated later:
+ * - `request`/`response` sent as JSON strings become objects, letting Mongo
+ *   group on `request.url` and `response.statusCode` for endpoint metrics.
+ * - `timeTaken` becomes a number of milliseconds.
+ * Values that don't parse are left untouched rather than dropped.
+ */
+const normalizeLogForStorage = <T extends Record<string, any>>(log: T): T => {
+	for (const field of ["request", "response"] as const) {
+		const value = log[field];
+		if (typeof value === "string") {
+			try {
+				const parsed = JSON.parse(value);
+				if (parsed && typeof parsed === "object") {
+					(log as Record<string, any>)[field] = parsed;
+				}
+			} catch {
+				/* not JSON — keep the original string */
+			}
+		}
+	}
+
+	const taken = log.timeTaken;
+	if (typeof taken === "string") {
+		const ms = parseFloat(taken);
+		if (!Number.isNaN(ms)) (log as Record<string, any>).timeTaken = ms;
+	} else if (taken instanceof Date) {
+		(log as Record<string, any>).timeTaken = taken.getTime();
+	}
+
+	return log;
+};
 
 /**
  * @route POST /logs
@@ -90,7 +125,7 @@ router.post("/logs", apiAuthMiddleware, async (req: Request, res: Response) => {
 			}
 		}
 
-		services.logs.create(log as ILog);
+		services.logs.create(normalizeLogForStorage(log) as ILog);
 		await services.em.flush();
 		logger.info({ appName: appKey?.appName }, "LOG-INGESTION-SUCCESS");
 		return res
@@ -144,7 +179,7 @@ router.post(
 						log.data = encryptObj(log.data, appKey.appName);
 					}
 				}
-				services.logs.create(log as ILog);
+				services.logs.create(normalizeLogForStorage(log) as ILog);
 			});
 			await services.em.flush();
 

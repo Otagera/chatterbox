@@ -27,14 +27,18 @@ export class Log extends BaseEntity {
 	@Property({ nullable: true })
 	traceId?: string;
 
+	// Stored structured (an object) so endpoint metrics can aggregate on
+	// request.url / response.statusCode. Older rows may still hold a JSON
+	// string, so readers must handle both shapes.
 	@Property({ nullable: true })
-	request?: string;
+	request?: Record<string, any> | string;
 
 	@Property({ nullable: true })
-	response?: string;
+	response?: Record<string, any> | string;
 
+	// Milliseconds. Older rows may hold a string like "42ms".
 	@Property({ nullable: true })
-	timeTaken?: string;
+	timeTaken?: number | string;
 
 	@Property()
 	key: string;

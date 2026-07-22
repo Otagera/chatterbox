@@ -13,13 +13,45 @@ block content
       a.cb-appsel(href="/")= appName
         span.car ▾
       .cb-spacer
+      .cb-seg
+        each r in ranges
+          a(href=`/analytics?range=${r}` class=(range === r ? "on" : ""))= r
       a.cb-btn.cb-btn--ghost(href="/") Logs
       a.cb-btn.cb-btn--ghost(href="/view/authorize" hx-get="/view/authorize" hx-target="this" hx-swap="outerHTML") New key
       button.cb-btn.cb-btn--danger(hx-post="/view/logout") Logout
 
     .cb-page-title
       h1.cb-h1 Analytics
-      span.cb-sub last 7 days · #{appName}
+      span.cb-sub last #{range} · #{appName}
+
+    //- RED metrics per endpoint (rate, errors, duration)
+    .cb-card.cb-chartcard(style="margin-bottom:16px")
+      h3.cb-chart-title Endpoints
+      if endpoints && endpoints.length
+        .tablewrap
+          table.cb-endpoints
+            thead
+              tr
+                th Endpoint
+                th.num Requests
+                th.num Errors
+                th.num Error rate
+                th.num p50
+                th.num p95
+            tbody
+              each e in endpoints
+                tr
+                  td
+                    span.cb-ep-method= e.method
+                    span.cb-ep-url= e.url
+                  td.num= e.count.toLocaleString()
+                  td.num= e.errors.toLocaleString()
+                  td.num(class=(e.errorRate >= 5 ? "is-bad" : ""))= e.errorRate.toFixed(1) + "%"
+                  td.num= e.p50 == null ? "—" : e.p50 + "ms"
+                  td.num= e.p95 == null ? "—" : e.p95 + "ms"
+      else
+        p.cb-note No request logs in this window. Send logs with a
+          |  #[code request] object (method + url) and a numeric #[code timeTaken] to populate this.
 
     .cb-charts
       .cb-card.cb-chartcard

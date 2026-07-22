@@ -53,16 +53,31 @@ const normalizeRange = (r?: unknown) =>
 	typeof r === "string" && RANGES[r] ? r : "24h";
 const sinceFor = (range: string) => new Date(Date.now() - RANGES[range] * 60_000);
 
+// Charts bucket by hour for short windows and by day for longer ones, so a
+// 15-minute range doesn't collapse into a single daily bar.
+type BucketUnit = "hour" | "day";
+const bucketFor = (range: string): BucketUnit =>
+	RANGES[range] <= 1440 ? "hour" : "day";
+const bucketLabel = (d: Date | string, unit: BucketUnit) => {
+	const iso = new Date(d).toISOString();
+	return unit === "hour" ? iso.slice(11, 16) : iso.slice(0, 10);
+};
+
 const LEVEL_KEYS = ["info", "warn", "error", "fatal", "debug", "trace"];
 const levelClass = (level: string) => {
 	const l = String(level || "").toLowerCase();
 	return ["info", "warn", "error", "fatal", "debug"].includes(l) ? l : "debug";
 };
 
+// Logs written before request/response were stored structured still hold a JSON
+// string, so accept either shape.
 const tryParseObj = (s?: unknown): any => {
-	if (!s || typeof s !== "string") return null;
+	if (!s) return null;
+	if (typeof s === "object") return s;
+	if (typeof s !== "string") return null;
 	try {
-		return JSON.parse(s);
+		const parsed = JSON.parse(s);
+		return parsed && typeof parsed === "object" ? parsed : null;
 	} catch {
 		return null;
 	}
@@ -140,7 +155,10 @@ const getOverview = async (appName: string, since: Date) => {
 	const errorRate = total ? (errors / total) * 100 : 0;
 	let sparkData: number[] = [];
 	try {
-		const er = await aggregateErrorRate(appName, 7);
+		const er = await aggregateErrorRate(
+			appName,
+			new Date(Date.now() - 7 * 24 * 60 * 60_000)
+		);
 		sparkData = (er.datasets?.[0]?.data as number[]) || [];
 	} catch {
 		/* sparkline is best-effort */
@@ -331,6 +349,91 @@ const renderTrace = (traceId: string, logs: any[]): string => {
 		<div class="cb-trace">${items}</div>`;
 };
 
+export type EndpointStat = {
+	method: string;
+	url: string;
+	count: number;
+	errors: number;
+	errorRate: number;
+	p50: number | null;
+	p95: number | null;
+};
+
+/**
+ * RED metrics per endpoint (Rate, Errors, Duration) over a time window.
+ *
+ * Only logs stored with a structured `request` participate — older rows that
+ * hold a JSON string can't be grouped by Mongo. Percentiles use the $percentile
+ * accumulator (MongoDB 7+); on older servers we fall back to averages so the
+ * table still renders.
+ */
+export const aggregateEndpoints = async (
+	appName: string,
+	since: Date,
+	limit = 15
+): Promise<EndpointStat[]> => {
+	const base: any[] = [
+		{
+			$match: {
+				appName,
+				createdAt: { $gte: since },
+				"request.url": { $exists: true, $ne: null },
+			},
+		},
+	];
+	const group: Record<string, any> = {
+		_id: { method: "$request.method", url: "$request.url" },
+		count: { $sum: 1 },
+		errors: {
+			$sum: { $cond: [{ $gte: ["$response.statusCode", 400] }, 1, 0] },
+		},
+	};
+	const tail = [{ $sort: { count: -1 } }, { $limit: limit }];
+
+	const withPercentiles = [
+		...base,
+		{
+			$group: {
+				...group,
+				p50: {
+					$percentile: { input: "$timeTaken", p: [0.5], method: "approximate" },
+				},
+				p95: {
+					$percentile: { input: "$timeTaken", p: [0.95], method: "approximate" },
+				},
+			},
+		},
+		...tail,
+	];
+
+	let rows: any[];
+	try {
+		rows = await services.orm.em.aggregate(Log, withPercentiles);
+	} catch {
+		// $percentile unavailable (MongoDB < 7) — degrade to averages.
+		rows = await services.orm.em.aggregate(Log, [
+			...base,
+			{ $group: { ...group, avg: { $avg: "$timeTaken" } } },
+			...tail,
+		]);
+	}
+
+	const num = (v: any): number | null => {
+		const n = Array.isArray(v) ? v[0] : v;
+		return typeof n === "number" && !Number.isNaN(n) ? Math.round(n) : null;
+	};
+
+	return rows.map((r) => ({
+		method: r._id?.method || "—",
+		url: r._id?.url || "—",
+		count: r.count,
+		errors: r.errors,
+		errorRate: r.count ? (r.errors / r.count) * 100 : 0,
+		p50: num(r.p50 ?? r.avg),
+		p95: num(r.p95 ?? r.avg),
+	}));
+};
+
 /**
  * Aggregates log volume per level per day for a given appName and number of past days.
  * Optimized for creating stacked bar/area charts or multi-line charts.
@@ -340,16 +443,13 @@ const renderTrace = (traceId: string, logs: any[]): string => {
  */
 export const aggregateLogVolume = async (
 	appName: string,
-	days: number
+	since: Date,
+	unit: BucketUnit = "day"
 ): Promise<ChartData> => {
-	const startDate = new Date();
-	startDate.setDate(startDate.getDate() - days);
-	startDate.setHours(0, 0, 0, 0);
-
 	const pipeline = [
 		{
 			$match: {
-				createdAt: { $gte: startDate },
+				createdAt: { $gte: since },
 				appName,
 			},
 		},
@@ -357,7 +457,7 @@ export const aggregateLogVolume = async (
 			$group: {
 				_id: {
 					level: "$level",
-					day: { $dateTrunc: { date: "$createdAt", unit: "day" } },
+					day: { $dateTrunc: { date: "$createdAt", unit } },
 				},
 				logVolume: { $count: {} },
 			},
@@ -391,7 +491,7 @@ export const aggregateLogVolume = async (
 
 	// Populate dailyLevelCounts, ensuring all known levels are initialized for each day
 	logAggregates.forEach((agg) => {
-		const dateStr = agg.day.toISOString().split("T")[0];
+		const dateStr = bucketLabel(agg.day, unit);
 		if (!dailyLevelCounts.has(dateStr)) {
 			const initialCounts = {} as Record<LevelKey, number>;
 			KNOWN_LEVEL_KEYS.forEach((levelKey) => {
@@ -440,16 +540,12 @@ export const aggregateLogVolume = async (
  */
 export const aggregateLogLevels = async (
 	appName: string,
-	days: number
+	since: Date
 ): Promise<ChartData> => {
-	const startDate = new Date();
-	startDate.setDate(startDate.getDate() - days);
-	startDate.setHours(0, 0, 0, 0);
-
 	const pipeline = [
 		{
 			$match: {
-				createdAt: { $gte: startDate },
+				createdAt: { $gte: since },
 				appName,
 			},
 		},
@@ -526,17 +622,13 @@ export const aggregateLogLevels = async (
  */
 export const aggregateTopKeys = async (
 	appName: string,
-	days: number,
+	since: Date,
 	limit: number
 ): Promise<ChartData> => {
-	const startDate = new Date();
-	startDate.setDate(startDate.getDate() - days);
-	startDate.setHours(0, 0, 0, 0);
-
 	const pipeline = [
 		{
 			$match: {
-				createdAt: { $gte: startDate },
+				createdAt: { $gte: since },
 				appName,
 			},
 		},
@@ -591,22 +683,19 @@ export const aggregateTopKeys = async (
  */
 export const aggregateErrorRate = async (
 	appName: string,
-	days: number
+	since: Date,
+	unit: BucketUnit = "day"
 ): Promise<ChartData> => {
-	const startDate = new Date();
-	startDate.setDate(startDate.getDate() - days);
-	startDate.setHours(0, 0, 0, 0);
-
 	const pipeline = [
 		{
 			$match: {
-				createdAt: { $gte: startDate },
+				createdAt: { $gte: since },
 				appName: appName,
 			},
 		},
 		{
 			$group: {
-				_id: { day: { $dateTrunc: { date: "$createdAt", unit: "day" } } },
+				_id: { day: { $dateTrunc: { date: "$createdAt", unit } } },
 				totalLogs: { $sum: 1 },
 				errorLogs: { $sum: { $cond: [{ $eq: ["$level", "error"] }, 1, 0] } },
 			},
@@ -640,7 +729,7 @@ export const aggregateErrorRate = async (
 	);
 
 	return {
-		labels: logAggregates.map((agg) => agg.day.toISOString().split("T")[0]),
+		labels: logAggregates.map((agg) => bucketLabel(agg.day, unit)),
 		datasets: [
 			{
 				label: "Error Rate (%)",
@@ -711,23 +800,32 @@ router.get(
 	async (req: Request, res: Response) => {
 		try {
 			const { appName, user, email } = req.session;
+			// Analytics honours the same range selector as the dashboard instead of
+			// being pinned to 7 days.
+			const range = normalizeRange(req.query.range);
+			const since = sinceFor(range);
+			const unit = bucketFor(range);
 
-			const logVolumeData = await aggregateLogVolume(appName as string, 7);
-			const logLevelData = await aggregateLogLevels(appName as string, 7);
-			const topKeysData = await aggregateTopKeys(appName as string, 7, 10);
-			const errorRateData = await aggregateErrorRate(appName as string, 7);
-
-			// 5. Average Response Time (Optional, if applicable)
-			// const avgTimeData = await aggregateAvgTime(appName as string, 7); // Returns { labels: [...], datasets: [...] }
+			const [logVolumeData, logLevelData, topKeysData, errorRateData, endpoints] =
+				await Promise.all([
+					aggregateLogVolume(appName as string, since, unit),
+					aggregateLogLevels(appName as string, since),
+					aggregateTopKeys(appName as string, since, 10),
+					aggregateErrorRate(appName as string, since, unit),
+					aggregateEndpoints(appName as string, since),
+				]);
 
 			return res.render("analytics", {
+				title: `Analytics · ${appName}`,
 				chartData: {
 					logVolume: logVolumeData,
 					logLevel: logLevelData,
 					topKeys: topKeysData,
 					errorRate: errorRateData,
-					// avgTime: avgTimeData // Uncomment if used
 				},
+				endpoints,
+				range,
+				ranges: Object.keys(RANGES),
 				appName,
 				user: user,
 				email,
