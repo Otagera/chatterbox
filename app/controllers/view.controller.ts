@@ -8,7 +8,7 @@ import { ZodError, z } from "zod";
 import { services } from "../config/db";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
-import { AppKey, Log } from "../entities";
+import { AlertMetric, AlertRule, AppKey, Log } from "../entities";
 import { decryptObj, hashLogintoken, maskKey } from "../utils/security.util";
 import { escapeHtml as esc } from "../utils/html.util";
 import logger from "../utils/logger.util";
@@ -815,6 +815,11 @@ router.get(
 					aggregateEndpoints(appName as string, since),
 				]);
 
+			const alertRules = await services.alertRules.find(
+				{ appName: appName as string },
+				{ orderBy: { createdAt: "desc" } }
+			);
+
 			return res.render("analytics", {
 				title: `Analytics · ${appName}`,
 				chartData: {
@@ -824,6 +829,7 @@ router.get(
 					errorRate: errorRateData,
 				},
 				endpoints,
+				alertsHtml: renderAlerts(alertRules),
 				range,
 				ranges: Object.keys(RANGES),
 				appName,
@@ -899,6 +905,146 @@ router.get("/view/stream", authMiddleware, async (req: Request, res: Response) =
 		return res.status(500).send(renderError(message));
 	}
 });
+
+const ALERT_METRIC_LABELS: Record<string, string> = {
+	error_rate: "Error rate >",
+	error_count: "Error count >",
+	fatal_count: "Fatal count >",
+};
+
+/** The alert-rules panel: current rules plus the form to add one. */
+const renderAlerts = (rules: AlertRule[]): string => {
+	const rows = rules.length
+		? rules
+				.map(
+					(r) => `<li class="cb-list-item">
+			<span>
+				<span class="cb-alert-rule">${esc(ALERT_METRIC_LABELS[r.metric] || r.metric)} ${esc(
+						r.metric === "error_rate" ? `${r.threshold}%` : r.threshold
+					)}</span>
+				<span class="cb-note"> over ${esc(r.windowMinutes)}m → ${esc(r.email)}</span>
+				${
+					r.lastFiredAt
+						? `<span class="cb-note"> · last fired ${esc(relTime(r.lastFiredAt))}</span>`
+						: ""
+				}
+			</span>
+			<button type="button" class="cb-btn cb-btn--danger cb-btn--sm"
+				hx-delete="/view/alerts/${encodeURIComponent(String(r._id ?? r.id))}"
+				hx-target="#cb-alerts" hx-swap="innerHTML">Remove</button>
+		</li>`
+				)
+				.join("")
+		: `<li class="cb-note" style="padding:11px 0">No alert rules yet.</li>`;
+
+	return `<ul class="cb-list">${rows}</ul>
+		<form class="cb-alert-form" hx-post="/view/alerts" hx-target="#cb-alerts" hx-swap="innerHTML">
+			<select class="cb-input" name="metric" aria-label="Metric">
+				<option value="error_rate">Error rate &gt; (%)</option>
+				<option value="error_count">Error count &gt;</option>
+				<option value="fatal_count">Fatal count &gt;</option>
+			</select>
+			<input class="cb-input" type="number" name="threshold" placeholder="Threshold" min="0" step="any" required />
+			<input class="cb-input" type="number" name="windowMinutes" placeholder="Window (min)" min="1" value="15" required />
+			<input class="cb-input" type="email" name="email" placeholder="Notify email" required />
+			<button class="cb-btn cb-btn--primary" type="submit">Add rule</button>
+		</form>`;
+};
+
+/**
+ * @route GET /view/alerts
+ * @description Alert rules for the current application.
+ */
+router.get("/view/alerts", authMiddleware, async (req: Request, res: Response) => {
+	try {
+		const appName = req.session.appName as string;
+		const rules = await services.alertRules.find(
+			{ appName },
+			{ orderBy: { createdAt: "desc" } }
+		);
+		return res.send(renderAlerts(rules));
+	} catch (error: any) {
+		return res.status(500).send(renderError(error?.message || "Could not load alerts."));
+	}
+});
+
+/**
+ * @route POST /view/alerts
+ * @description Creates an alert rule for the current application.
+ */
+router.post("/view/alerts", authMiddleware, async (req: Request, res: Response) => {
+	const appName = req.session.appName as string;
+	try {
+		const spec = z.object({
+			metric: z.enum(["error_rate", "error_count", "fatal_count"]),
+			threshold: z.coerce.number().min(0),
+			windowMinutes: z.coerce.number().int().min(1).max(1440).default(15),
+			email: z.string().email(),
+			cooldownMinutes: z.coerce.number().int().min(1).default(60),
+		});
+		type specType = z.infer<typeof spec>;
+		const body = validateSpec<specType>(spec, req.body);
+
+		const user = req.session.email
+			? await services.users.findOne({ email: req.session.email })
+			: null;
+
+		const rule = new AlertRule(
+			appName,
+			body.metric as AlertMetric,
+			body.threshold,
+			body.email,
+			body.windowMinutes,
+			body.cooldownMinutes,
+			user || undefined
+		);
+		await services.em.persistAndFlush(rule);
+
+		logger.info({ appName, metric: body.metric }, "ALERT-RULE-CREATED");
+		const rules = await services.alertRules.find(
+			{ appName },
+			{ orderBy: { createdAt: "desc" } }
+		);
+		return res.send(renderAlerts(rules));
+	} catch (error: any) {
+		const message =
+			error instanceof ZodError
+				? error.errors.map((e) => e.message).join(", ")
+				: error?.message || "Could not create that alert rule.";
+		const rules = await services.alertRules.find({ appName });
+		return res.status(400).send(renderError(message) + renderAlerts(rules));
+	}
+});
+
+/**
+ * @route DELETE /view/alerts/:id
+ * @description Removes an alert rule belonging to the current application.
+ */
+router.delete(
+	"/view/alerts/:id",
+	authMiddleware,
+	async (req: Request, res: Response) => {
+		const appName = req.session.appName as string;
+		try {
+			// Scope by appName so a rule can't be deleted across tenants.
+			const rule = await services.alertRules.findOne({
+				id: req.params.id,
+				appName,
+			});
+			if (rule) await services.em.removeAndFlush(rule);
+
+			const rules = await services.alertRules.find(
+				{ appName },
+				{ orderBy: { createdAt: "desc" } }
+			);
+			return res.send(renderAlerts(rules));
+		} catch (error: any) {
+			return res
+				.status(500)
+				.send(renderError(error?.message || "Could not remove that rule."));
+		}
+	}
+);
 
 /**
  * @route GET /view/trace/:traceId

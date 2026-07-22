@@ -1,0 +1,30 @@
+<%- include('partials/header.ejs'); %>
+
+<div style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #132029; padding: 24px; max-width: 560px; margin: 0 auto;">
+
+  <p style="font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #b91c1c; font-weight: 700; margin: 0 0 6px;">Alert</p>
+
+  <h1 style="font-size: 20px; margin: 0 0 6px;"><%= metricLabel %> is above threshold</h1>
+  <p style="color: #5f6f7c; margin: 0 0 20px;">Application <strong><%= appName %></strong>, last <%= windowMinutes %> minutes.</p>
+
+  <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px;">
+    <tr>
+      <td style="padding: 8px 0; color: #5f6f7c; border-bottom: 1px solid #e4eaec;">Observed</td>
+      <td style="padding: 8px 0; text-align: right; font-weight: 700; color: #b91c1c; border-bottom: 1px solid #e4eaec;"><%= value %></td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 0; color: #5f6f7c; border-bottom: 1px solid #e4eaec;">Threshold</td>
+      <td style="padding: 8px 0; text-align: right; border-bottom: 1px solid #e4eaec;"><%= threshold %></td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 0; color: #5f6f7c; border-bottom: 1px solid #e4eaec;">Errors / total logs</td>
+      <td style="padding: 8px 0; text-align: right; border-bottom: 1px solid #e4eaec;"><%= errors %> / <%= total %></td>
+    </tr>
+  </table>
+
+  <p style="color: #5f6f7c; font-size: 13px; margin: 0;">
+    Open Chatterbox to inspect the affected logs and traces.
+  </p>
+</div>
+
+<%- include('partials/footer.ejs'); %>

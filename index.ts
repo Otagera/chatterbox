@@ -82,6 +82,21 @@ export const init = (async () => {
 	new QueueWorkersHandler(constants.BULL_QUEUE_NAMES.DEFAULT);
 	new QueueWorkersHandler(constants.BULL_QUEUE_NAMES.EMAIL);
 
+	// Evaluate alert rules on a schedule. A fixed jobId keeps BullMQ from
+	// stacking up a new repeatable job on every restart.
+	if (config.env !== "test") {
+		await queueServices.defaultQueueLib.addJob(
+			"evaluateAlerts",
+			{ meta: {}, worker: "evaluateAlerts" },
+			{
+				repeat: { every: Number(process.env.ALERT_INTERVAL_MS) || 60_000 },
+				jobId: "alert-evaluator",
+				removeOnComplete: 20,
+				removeOnFail: 20,
+			}
+		);
+	}
+
 	// Liveness probe. Declared before the HTTP logger so container healthchecks
 	// don't flood the logs.
 	app.get("/healthz", (_req, res) => res.status(200).json({ status: "ok" }));

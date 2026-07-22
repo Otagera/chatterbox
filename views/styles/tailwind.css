@@ -315,6 +315,21 @@
 .cb-chart-wrap { position: relative; height: 280px; }
 .cb-chart-wrap--pie { max-width: 320px; margin: 0 auto; }
 
+/* ---- alert rules ---- */
+.cb-alert-rule { font-weight: 600; font-size: 13px; }
+.cb-alert-form {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	align-items: center;
+	margin-top: 14px;
+	padding-top: 14px;
+	border-top: 1px solid var(--cb-line);
+}
+.cb-alert-form .cb-input { width: auto; flex: 1 1 130px; min-width: 0; }
+.cb-alert-form select.cb-input { flex: 0 0 auto; }
+.cb-alert-form .cb-btn { flex: 0 0 auto; }
+
 /* ---- endpoint (RED) metrics table ---- */
 .cb-endpoints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .cb-endpoints th {

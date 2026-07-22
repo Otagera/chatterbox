@@ -191,6 +191,9 @@
   .absolute {
     position: absolute;
   }
+  .fixed {
+    position: fixed;
+  }
   .relative {
     position: relative;
   }
@@ -229,6 +232,9 @@
   }
   .table {
     display: table;
+  }
+  .border-collapse {
+    border-collapse: collapse;
   }
   .transform {
     transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
@@ -1094,6 +1100,30 @@
 .cb-chart-wrap--pie {
   max-width: 320px;
   margin: 0 auto;
+}
+.cb-alert-rule {
+  font-weight: 600;
+  font-size: 13px;
+}
+.cb-alert-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--cb-line);
+}
+.cb-alert-form .cb-input {
+  width: auto;
+  flex: 1 1 130px;
+  min-width: 0;
+}
+.cb-alert-form select.cb-input {
+  flex: 0 0 auto;
+}
+.cb-alert-form .cb-btn {
+  flex: 0 0 auto;
 }
 .cb-endpoints {
   width: 100%;

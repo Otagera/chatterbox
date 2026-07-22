@@ -53,6 +53,12 @@ block content
         p.cb-note No request logs in this window. Send logs with a
           |  #[code request] object (method + url) and a numeric #[code timeTaken] to populate this.
 
+    //- alert rules
+    .cb-card.cb-chartcard(style="margin-bottom:16px")
+      h3.cb-chart-title Alerts
+      p.cb-note(style="margin:-6px 0 12px") Evaluated in the background; notifications are emailed when a threshold is exceeded.
+      #cb-alerts!= alertsHtml
+
     .cb-charts
       .cb-card.cb-chartcard
         h3.cb-chart-title Log volume over time

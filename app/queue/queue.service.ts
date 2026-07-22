@@ -13,7 +13,11 @@ export const emailQueue = new Queue(
 	constants.BULL_QUEUE_NAMES.EMAIL,
 	queueConnectionConfig
 );
-type WorkerTypes = "sendOTPEmail" | "welcomeEmail";
+type WorkerTypes =
+	| "sendOTPEmail"
+	| "welcomeEmail"
+	| "evaluateAlerts"
+	| "sendAlertEmail";
 // The lib that contain adding the job and getting the queue
 export class QueueLib {
 	_queue: Queue;
