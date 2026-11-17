@@ -76,7 +76,7 @@ jobs:
           set -euo pipefail
           echo "Deploying ${{ needs.build-and-push.outputs.image }}:${{ github.sha }}"
           status=$(curl -sS -o /tmp/coolify.out -w '%{http_code}' \
-            -X GET "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
+            -X POST --data '' "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}")
           echo "Coolify responded $status"
           cat /tmp/coolify.out
