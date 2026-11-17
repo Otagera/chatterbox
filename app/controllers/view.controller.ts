@@ -1779,7 +1779,10 @@ router.get("/view/authorize", async (req: Request, res: Response) => {
 				"User session not found or app not selected. Please log in."
 			);
 		}
-		const { apiSecret } = await apiAuthorizeService({ email, appName });
+		const { apiSecret } = await apiAuthorizeService(
+			{ email, appName },
+			{ rotate: true }
+		);
 		req.session.user = apiSecret;
 		const apiKeyDisplayHTML = `
       <div id="apiKeyDisplaySection" style="max-width:340px">
